@@ -12,7 +12,7 @@ NTs = {
 
 nt_complements = {
     "A" : "T", "T" : "A", "G" : "C", "C" : "G",
-    "W" : "S", "S" : "W", "M" : "K", "K" : "M",
+    "S" : "S", "W" : "W", "M" : "K", "K" : "M",
     "R" : "Y", "Y" : "R", "B" : "V", "V" : "B",
     "D" : "H", "H" : "D", "N" : "N",
     "X" : "X"
@@ -154,6 +154,10 @@ re_enzymes = {
     # Blunt Cutters
     "EcoRV": "GATATC",
     "ScaI": "AGTACT"
+}
+
+re_enzymes_inverted = {
+    v : k for k, v in re_enzymes.items()
 }
 
 # These are of the form (A, B)

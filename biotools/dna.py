@@ -36,8 +36,6 @@ class DNA():
 
     # TODO: ARE THERE ANY LIBRARIES THAT COMBINE SEQUENCE STUFF, MELTING TEMP, CLONING ABILITY (COMBINATORIAL),
     # IN ONE LIBRARY?
-    # TODO: This would be cool to also implement a way for these sequences to be represented and for
-    # cloning to be performed easily
     # TODO: Reactions and their products are stored in something
 
     def __init__(

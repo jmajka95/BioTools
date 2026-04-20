@@ -12,7 +12,12 @@ import re
 # Probably can just make a compiler class that utilizes some functionality from the CombinatorialCompiler
 # Should put assign_codons() in utils
 
-def amplify(f_primer: list[Oligo], r_primer: list[Oligo], template: DNA, min_binding_length: int = 15) -> DNA | list[DNA]:
+def amplify(
+    f_primer: list[Oligo], 
+    r_primer: list[Oligo], 
+    template: DNA, 
+    min_binding_length: int = 15
+) -> DNA | list[DNA]:
     """Amplifies DNA using provided primers that must bind at least min_binding_length bases."""
     if any(len(f) < min_binding_length for f in f_primer) or any(len(r) < min_binding_length for r in r_primer):
         raise ReactionError(f"Minimum length of primer must be at least {min_binding_length} bp!")
@@ -63,11 +68,12 @@ def kld(input: DNA) -> DNA:
     """Performs KLD on a linear DNA fragment.
     For more information, see https://www.neb.com/en-ca/protocols/kld-enzyme-mix-reaction-protocol-m0554
     """
+    # TODO: Length check necessary?
     if input.is_circular():
         raise ReactionError("Cannot perform KLD on a circular input!")
     return DNA(input.seq, input.type, BioProperty.CIRCULAR, input.strandedness, input.annotations)
 
-def digest(input: DNA, enzyme: str) -> DNA | list[DNA]:
+def digest(input: DNA, enzymes: list[str]) -> DNA | list[DNA]:
     """Digests the input with the provided enzyme and returns all products formed."""
     sites: dict = find_re_sites(input, enzyme)
     # TODO: Possible recursive solution is make the input variable length and then iterate over inputs, so can recursively call this on products
@@ -77,41 +83,42 @@ def digest(input: DNA, enzyme: str) -> DNA | list[DNA]:
         raise ReactionError("Cannot find valid binding site with enzyme and input!")
 
     products: list[DNA] = []
-    for span in sites[enzyme]["Forward"]:
-        if input.is_circular(): # Reindex one product
-            product = input.reindex(span[0]+re_enzymes_offsets[enzyme][0], False)
-            product.seq += product.seq[:re_enzymes_offsets[enzyme][1]]
-            product.circular = BioProperty.LINEAR
-            product.strandedness = BioProperty.CUT
-            product.offsets = ((0, re_enzymes_offsets[enzyme][1]), (re_enzymes_offsets[enzyme][1], 0))
-            products.append(product)
-        else: # Make two products
-            product_1 = input[:span[0]+re_enzymes_offsets[enzyme][0]]
-            product_1.seq += input.seq[span[0]+re_enzymes_offsets[enzyme][0]:span[0]+re_enzymes_offsets[enzyme][0]+re_enzymes_offsets[enzyme][1]]
-            product_1.strandedness = BioProperty.CUT
-            product_1.offsets = ((0, re_enzymes_offsets[enzyme][1]), (0, 0))
-            product_2 = input[span[0]+re_enzymes_offsets[enzyme][0]:]
-            product_2.strandedness = BioProperty.CUT
-            product_2.offsets = ((0, 0), (re_enzymes_offsets[enzyme][1], 0))
-            products.extend([product_1, product_2])
+    for enzyme in enzymes:
+        for span in sites[enzyme]["Forward"]:
+            if input.is_circular(): # Reindex one product
+                product = input.reindex(span[0] + re_enzymes_offsets[enzyme][0], False)
+                product.seq += product.seq[:re_enzymes_offsets[enzyme][1]]
+                product.circular = BioProperty.LINEAR
+                product.strandedness = BioProperty.CUT
+                product.offsets = ((0, re_enzymes_offsets[enzyme][1]), (re_enzymes_offsets[enzyme][1], 0))
+                products.append(product)
+            else: # Make two products
+                product_1 = input[:span[0] + re_enzymes_offsets[enzyme][0]]
+                product_1.seq += input.seq[span[0]+re_enzymes_offsets[enzyme][0]:span[0]+re_enzymes_offsets[enzyme][0]+re_enzymes_offsets[enzyme][1]]
+                product_1.strandedness = BioProperty.CUT
+                product_1.offsets = ((0, re_enzymes_offsets[enzyme][1]), (0, 0))
+                product_2 = input[span[0] + re_enzymes_offsets[enzyme][0]:]
+                product_2.strandedness = BioProperty.CUT
+                product_2.offsets = ((0, 0), (re_enzymes_offsets[enzyme][1], 0))
+                products.extend([product_1, product_2])
 
-    for span in sites[enzyme]["Reverse"]:
-        if input.is_circular(): # Reindex one product
-            product = input.reindex(span[0]+re_enzymes_offsets[enzyme][0], False)
-            product.seq += product.seq[:re_enzymes_offsets[enzyme][1]]
-            product.circular = BioProperty.LINEAR
-            product.strandedness = BioProperty.CUT
-            product.offsets = ((0, re_enzymes_offsets[enzyme][1]), (re_enzymes_offsets[enzyme][1], 0))
-            products.append(product)
-        else: # Make two products
-            product_1 = input[:span[0]+re_enzymes_offsets[enzyme][0]]
-            product_1.seq += input.seq[span[0]+re_enzymes_offsets[enzyme][0]:span[0]+re_enzymes_offsets[enzyme][0]+re_enzymes_offsets[enzyme][1]]
-            product_1.strandedness = BioProperty.CUT
-            product_1.offsets = ((0, re_enzymes_offsets[enzyme][1]), (0, 0))
-            product_2 = input[span[0]+re_enzymes_offsets[enzyme][0]:]
-            product_2.strandedness = BioProperty.CUT
-            product_2.offsets = ((0, 0), (re_enzymes_offsets[enzyme][1], 0))
-            products.extend([product_1, product_2])
+        for span in sites[enzyme]["Reverse"]:
+            if input.is_circular(): # Reindex one product
+                product = input.reindex(span[0]+re_enzymes_offsets[enzyme][0], False)
+                product.seq += product.seq[:re_enzymes_offsets[enzyme][1]]
+                product.circular = BioProperty.LINEAR
+                product.strandedness = BioProperty.CUT
+                product.offsets = ((0, re_enzymes_offsets[enzyme][1]), (re_enzymes_offsets[enzyme][1], 0))
+                products.append(product)
+            else: # Make two products
+                product_1 = input[:span[0]+re_enzymes_offsets[enzyme][0]]
+                product_1.seq += input.seq[span[0]+re_enzymes_offsets[enzyme][0]:span[0]+re_enzymes_offsets[enzyme][0]+re_enzymes_offsets[enzyme][1]]
+                product_1.strandedness = BioProperty.CUT
+                product_1.offsets = ((0, re_enzymes_offsets[enzyme][1]), (0, 0))
+                product_2 = input[span[0]+re_enzymes_offsets[enzyme][0]:]
+                product_2.strandedness = BioProperty.CUT
+                product_2.offsets = ((0, 0), (re_enzymes_offsets[enzyme][1], 0))
+                products.extend([product_1, product_2])
 
     if len(products) == 1:
         return products[0]

@@ -74,13 +74,13 @@ def kld(input: DNA) -> DNA:
     return DNA(input.seq, input.type, BioProperty.CIRCULAR, input.strandedness, input.annotations)
 
 def digest(input: DNA, enzymes: list[str]) -> DNA | list[DNA]:
-    """Digests the input with the provided enzyme and returns all products formed."""
-    sites: dict = find_re_sites(input, enzyme)
-    # TODO: Possible recursive solution is make the input variable length and then iterate over inputs, so can recursively call this on products
+    """Digests the input with the provided enzyme and returns all products formed.
+    NOTE: Enzymes must be valid keys of bio_alphabet.re_enzymes"""
+    sites: dict = find_re_sites(input, *enzymes)
 
     circular = True if input.circular == BioProperty.CIRCULAR else False
-    if not validate_sites(sites, circular):
-        raise ReactionError("Cannot find valid binding site with enzyme and input!")
+    if not validate_sites(sites, len(input) - 1, circular): # NOTE: Must provide (len - 1) for valid re-indexing
+        raise ReactionError("Cannot find valid binding site(s) with enzyme and input!")
 
     products: list[DNA] = []
     for enzyme in enzymes:

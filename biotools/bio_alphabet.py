@@ -165,8 +165,14 @@ re_enzymes_inverted = {
 # and B is the offset for both the end of the top strand and beginning of the bottom strand
 # TODO: If B can differ between top and bottom strand, I should make a third one. Not sure that's ever true.
 re_enzymes_offsets = {
-    re_enzymes["BsaI"]: (7, 4),
-    re_enzymes["Esp3I"]: (7, 4),
-    re_enzymes["BsmBI"]: (7, 4),
-    re_enzymes["PaqCI"]: (11, 4)
+    # Type IIS Enzymes
+    "BsaI": (7, 4),
+    "Esp3I": (7, 4),
+    "BsmBI": (7, 4),
+    "PaqCI": (11, 4),
+
+    # Type II Enzymes
+    "SpeI": (1, 4),
+    "SwaI": (4, 0), # TODO: Check blunt cutter works
+    "HindIII": (1, 4)
 }

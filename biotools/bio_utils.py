@@ -162,27 +162,29 @@ def find_re_sites(seq: DNA, *enzymes: str) -> dict:
     of a DNA sequence. Returns a dictionary mapping the site to a list of tuples of their
     spans for both forward and reverse strand.
     """
+    enzyme_seqs = [re_enzymes[enzyme] for enzyme in enzymes]
+
     site_span_dict = {}
-    for enzyme in enzymes:
+    for i, enzyme in enumerate(enzymes):
         site_span_dict[enzyme] = {}
         site_span_dict[enzyme]["Forward"] = []
         site_span_dict[enzyme]["Reverse"] = []
 
-        if seq.is_circular():
+        if seq.is_circular(): # Pad sequence up to (enzyme length - 1) because wraparound is valid
             sequence = seq.top_strand + seq.top_strand[:len(enzyme) - 1]
             rev_sequence = seq.bottom_strand + seq.bottom_strand[:len(enzyme) - 1]
         else:
             sequence = seq.top_strand
             rev_sequence = seq.bottom_strand
 
-        f_matches = re.finditer(enzyme, sequence)
+        f_matches = re.finditer(enzyme_seqs[i], sequence)
         for match in f_matches:
             f_span = match.span()
             if f_span[1] >= seq.length:
                 f_span = (f_span[0], f_span[1] - seq.length)
             site_span_dict[enzyme]["Forward"].append(f_span)
 
-        r_matches = re.finditer(enzyme, rev_sequence)
+        r_matches = re.finditer(enzyme_seqs[i], rev_sequence)
         for match in r_matches:
             r_span = match.span()
             if r_span[1] > seq.length:
@@ -191,24 +193,38 @@ def find_re_sites(seq: DNA, *enzymes: str) -> dict:
 
     return site_span_dict
 
-def validate_sites(site_dict: dict, circular: bool, padding: int = 6) -> bool:
-    """Validates whether or not a cut site exists and can be used."""
+def validate_sites(site_dict: dict, seq_len: int, circular: bool, padding: int = 6) -> bool:
+    """Helper function for digest().
+    Validates whether or not a cut site exists and can be used."""
+    # TODO: Also have this validate that multiple cut sites aren't too close
     valid: bool = False
+    spans: list[tuple[int, int]] = []
     for val in site_dict.values():
-        for lst in val.values():
-            if not circular:
-                if lst:
-                    valid = True
-                    for span in lst:
-                        if span[0] < padding: # Must have at least padding bases for digestion to work
-                            return False
-            else:
-                if lst:
-                    return True
-    if circular:
-        return False
-    if valid:
-        return True
+        for orientation in val.keys():
+            for lst in val[orientation]:
+                if not circular:
+                    if lst:
+                        valid = True
+                        for span in lst:
+                            if span[0] < padding: # Must have at least padding bases for digestion to work if linear
+                                return False
+                else: # Padding not an issue if circular
+                    if lst:
+                        valid = True
+                if orientation == "Reverse":
+                    lst = (seq_len - lst[0], seq_len - lst[1]) # Convert to forward orientation
+                    spans.append(lst)
+                else:
+                    spans.append(lst)
+    if not spans: return False
+
+    # Check span overlaps?
+    for s1 in spans:
+        for s2 in spans:
+            if s1 != s2:
+                pass # re_enzymes_offsets
+
+    if valid: return True
     return False
 
 # TODO: Generate random pool of DNA seqs?

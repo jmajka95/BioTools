@@ -2,6 +2,7 @@
 from dna import DNA
 from oligo import Oligo
 from bio_exceptions import ReactionError
+from bio_annotation import BioOrientation
 from bio_enums import *
 from bio_utils import find_binding_site, rev_comp, find_re_sites, validate_sites
 from bio_alphabet import re_enzymes, re_enzymes_offsets
@@ -74,51 +75,95 @@ def kld(input: DNA) -> DNA:
     return DNA(input.seq, input.type, BioProperty.CIRCULAR, input.strandedness, input.annotations)
 
 def digest(input: DNA, enzymes: list[str]) -> DNA | list[DNA]:
-    """Digests the input with the provided enzyme and returns all products formed.
+    """Digests the input with the provided enzyme(s) and returns all products formed.
     NOTE: Enzymes must be valid keys of bio_alphabet.re_enzymes"""
+    # TODO: If it cuts off of the plasmid, that's fine?? - make sure this is handled w/ linear
     sites: dict = find_re_sites(input, *enzymes)
 
     circular = True if input.circular == BioProperty.CIRCULAR else False
-    if not validate_sites(sites, len(input) - 1, circular): # NOTE: Must provide (len - 1) for valid re-indexing
-        raise ReactionError("Cannot find valid binding site(s) with enzyme and input!")
+    if not (site_dict := validate_sites(sites, len(input), circular)):
+        raise ReactionError("Invalid enzyme parameters detected! Check cut sites do not overlap or cut other sites.")
 
     products: list[DNA] = []
-    for enzyme in enzymes:
-        for span in sites[enzyme]["Forward"]:
-            if input.is_circular(): # Reindex one product
-                product = input.reindex(span[0] + re_enzymes_offsets[enzyme][0], False)
-                product.seq += product.seq[:re_enzymes_offsets[enzyme][1]]
-                product.circular = BioProperty.LINEAR
-                product.strandedness = BioProperty.CUT
-                product.offsets = ((0, re_enzymes_offsets[enzyme][1]), (re_enzymes_offsets[enzyme][1], 0))
-                products.append(product)
-            else: # Make two products
-                product_1 = input[:span[0] + re_enzymes_offsets[enzyme][0]]
-                product_1.seq += input.seq[span[0]+re_enzymes_offsets[enzyme][0]:span[0]+re_enzymes_offsets[enzyme][0]+re_enzymes_offsets[enzyme][1]]
-                product_1.strandedness = BioProperty.CUT
-                product_1.offsets = ((0, re_enzymes_offsets[enzyme][1]), (0, 0))
-                product_2 = input[span[0] + re_enzymes_offsets[enzyme][0]:]
-                product_2.strandedness = BioProperty.CUT
-                product_2.offsets = ((0, 0), (re_enzymes_offsets[enzyme][1], 0))
-                products.extend([product_1, product_2])
 
-        for span in sites[enzyme]["Reverse"]:
-            if input.is_circular(): # Reindex one product
-                product = input.reindex(span[0]+re_enzymes_offsets[enzyme][0], False)
-                product.seq += product.seq[:re_enzymes_offsets[enzyme][1]]
+    # Generate products based on spans
+    tuples: list[tuple[int,int]] = sorted(site_dict)
+    for span in tuples:
+        enzyme = site_dict[span][0]
+        idx = tuples.index(span)
+        if idx == 0:
+            if idx == len(tuples) - 1: # First and last
+                if input.is_circular(): # Reindex one product
+                    product = input.reindex(span[0] + re_enzymes_offsets[enzyme][0], False)
+                    product.seq += product.seq[:re_enzymes_offsets[enzyme][1]] # One enzyme edge case, must add additional seq to look like product
+                    product.circular = BioProperty.LINEAR
+                    product.strandedness = BioProperty.CUT
+                    product.offsets = ((0, re_enzymes_offsets[enzyme][1]), (re_enzymes_offsets[enzyme][1], 0))
+                    products.append(product)
+                else: # Make two products
+                    product_1 = input[:span[0] + re_enzymes_offsets[enzyme][0]]
+                    product_1.seq += input.seq[span[0]+re_enzymes_offsets[enzyme][0]:span[0]+re_enzymes_offsets[enzyme][0]+re_enzymes_offsets[enzyme][1]]
+                    product_1.strandedness = BioProperty.CUT
+                    product_1.offsets = ((0, re_enzymes_offsets[enzyme][1]), (0, 0))
+                    product_2 = input[span[0] + re_enzymes_offsets[enzyme][0]:]
+                    product_2.strandedness = BioProperty.CUT
+                    product_2.offsets = ((0, 0), (re_enzymes_offsets[enzyme][1], 0))
+                    products.extend([product_1, product_2])
+            else: # Just first
+                next_span = tuples[idx + 1]
+                next_enzyme = site_dict[next_span][0]
+
+                # Generate offsets to use
+                us_slice = span[0] + re_enzymes_offsets[enzyme][0] if site_dict[span][1] == BioOrientation.FORWARD else span[1] - re_enzymes_offsets[enzyme][0] - re_enzymes_offsets[enzyme][1]
+                ds_slice = next_span[0] + re_enzymes_offsets[next_enzyme][0] + re_enzymes_offsets[next_enzyme][1] if site_dict[next_span][1] == BioOrientation.FORWARD else (next_span[1] - re_enzymes_offsets[next_enzyme][0]) + 1
+
+                if input.is_circular(): # Generate a product that uses the next span
+                    product = input[us_slice:ds_slice]
+                    product.circular = BioProperty.LINEAR
+                    product.strandedness = BioProperty.CUT
+                    product.offsets = ((0, re_enzymes_offsets[next_enzyme][1]), (re_enzymes_offsets[enzyme][1], 0))
+                    products.append(product)
+                else: # Generate two products
+                    product_1 = input[:us_slice+re_enzymes_offsets[enzyme][1]] # was: span[0] + re_enzymes_offsets[enzyme][0], TODO does this always work?
+                    product_1.strandedness = BioProperty.CUT
+                    product_1.offsets = ((0, re_enzymes_offsets[enzyme][1]), (0, 0))
+                    product_2 = input[us_slice:ds_slice]
+                    product_2.strandedness = BioProperty.CUT
+                    product_2.offsets = ((0, re_enzymes_offsets[next_enzyme][1]), (re_enzymes_offsets[enzyme][1], 0))
+                    products.extend([product_1, product_2])
+        elif idx == len(tuples) - 1: # Last
+            if input.is_circular(): # Use first's span
+                first_span = tuples[0]
+                first_enzyme = site_dict[first_span][0]
+
+                # Generate offsets to use
+                us_slice = span[0] + re_enzymes_offsets[enzyme][0] if site_dict[span][1] == BioOrientation.FORWARD else span[1] - re_enzymes_offsets[enzyme][0] - re_enzymes_offsets[enzyme][1]
+                ds_slice = first_span[0] + re_enzymes_offsets[first_enzyme][0] + re_enzymes_offsets[first_enzyme][1] if site_dict[next_span][1] == BioOrientation.FORWARD else (first_span[1] - re_enzymes_offsets[first_enzyme][0]) + 1
+
+                product = input[us_slice:ds_slice]
                 product.circular = BioProperty.LINEAR
                 product.strandedness = BioProperty.CUT
-                product.offsets = ((0, re_enzymes_offsets[enzyme][1]), (re_enzymes_offsets[enzyme][1], 0))
+                product.offsets = ((0, re_enzymes_offsets[first_enzyme][1]), (re_enzymes_offsets[enzyme][1], 0))
                 products.append(product)
-            else: # Make two products
-                product_1 = input[:span[0]+re_enzymes_offsets[enzyme][0]]
-                product_1.seq += input.seq[span[0]+re_enzymes_offsets[enzyme][0]:span[0]+re_enzymes_offsets[enzyme][0]+re_enzymes_offsets[enzyme][1]]
-                product_1.strandedness = BioProperty.CUT
-                product_1.offsets = ((0, re_enzymes_offsets[enzyme][1]), (0, 0))
-                product_2 = input[span[0]+re_enzymes_offsets[enzyme][0]:]
-                product_2.strandedness = BioProperty.CUT
-                product_2.offsets = ((0, 0), (re_enzymes_offsets[enzyme][1], 0))
-                products.extend([product_1, product_2])
+
+            else: # Go to end
+                product = input[span[0] + re_enzymes_offsets[enzyme][0]:]
+                product.strandedness = BioProperty.CUT
+                product.offsets = ((0, 0), (re_enzymes_offsets[enzyme][1], 0))
+                products.append(product)
+        else: # Neither first nor last
+            next_span = tuples[idx + 1]
+            next_enzyme = site_dict[next_span][0]
+
+            # Generate offsets to use
+            us_slice = span[0] + re_enzymes_offsets[enzyme][0] if site_dict[span][1] == BioOrientation.FORWARD else span[1] - re_enzymes_offsets[enzyme][0] - re_enzymes_offsets[enzyme][1]
+            ds_slice = next_span[0] + re_enzymes_offsets[next_enzyme][0] + re_enzymes_offsets[next_enzyme][1] if site_dict[next_span][1] == BioOrientation.FORWARD else (next_span[1] - re_enzymes_offsets[next_enzyme][0]) + 1
+            
+            product = input[us_slice:ds_slice]
+            product.circular = BioProperty.LINEAR
+            product.strandedness = BioProperty.CUT
+            product.offsets = ((0, re_enzymes_offsets[next_enzyme][1]), (re_enzymes_offsets[enzyme][1], 0))
+            products.append(product)
 
     if len(products) == 1:
         return products[0]
@@ -126,9 +171,12 @@ def digest(input: DNA, enzymes: list[str]) -> DNA | list[DNA]:
 
 def ligate(*inputs: DNA) -> DNA:
     """Ligates together the provided inputs."""
+    # TODO: How to handle blunt ligation? Maybe separate flag?
     for input in inputs:
         if input.is_circular():
             raise ReactionError("Cannot ligate circular input!")
+        if not input.is_cut():
+            raise ReactionError("Cannot ligate uncut input!")
     raise NotImplementedError
 
 def gel_extract(*inputs: DNA, extraction_len: int) -> DNA | list[DNA]:

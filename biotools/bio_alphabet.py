@@ -148,10 +148,10 @@ re_enzymes = {
 
     # Type II Enzymes
     "SpeI": "ACTAGT",
-    "SwaI": "ATTTAAAT",
     "HindIII": "AAGCTT",
 
     # Blunt Cutters
+    "SwaI": "ATTTAAAT",
     "EcoRV": "GATATC",
     "ScaI": "AGTACT"
 }
@@ -161,9 +161,9 @@ re_enzymes_inverted = {
 }
 
 # These are of the form (A, B)
-# Where A is the offset to reindex from the enzyme recognition site
+# Where A is the offset to reindex from the beginning of the enzyme recognition site
 # and B is the offset for both the end of the top strand and beginning of the bottom strand
-# TODO: If B can differ between top and bottom strand, I should make a third one. Not sure that's ever true.
+# TODO: Make a list of tuples for multi-cutters
 re_enzymes_offsets = {
     # Type IIS Enzymes
     "BsaI": (7, 4),
@@ -173,6 +173,12 @@ re_enzymes_offsets = {
 
     # Type II Enzymes
     "SpeI": (1, 4),
-    "SwaI": (4, 0), # TODO: Check blunt cutter works
-    "HindIII": (1, 4)
+    "HindIII": (1, 4),
+
+    # Blunt Cutters
+    "SwaI": (4, 0),
+    "EcoRV": (3, 0),
+    "ScaI": (3, 0)
+
+    # BsaXI (double cutter)
 }

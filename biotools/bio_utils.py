@@ -14,7 +14,7 @@ from random import choice, sample
 from bio_enums import *
 from bio_exceptions import *
 from bio_pool import BioPool
-from bio_annotation import BioAnnotation
+from bio_annotation import BioAnnotation, BioOrientation
 import random
 import re
 
@@ -103,10 +103,8 @@ def generate_random_sequence(length: int, nt: bool = False) -> str:
         while (aa == "*"):
             aa = choice(keys)
         seq += aa
-
     if nt:
         seq = reverse_translate(seq)
-
     return seq
 
 def generate_random_mutations(seq: str, mut_range: tuple[int, int], num_muts: int) -> str:
@@ -127,7 +125,6 @@ def generate_random_mutations(seq: str, mut_range: tuple[int, int], num_muts: in
         while (aa == "*" or aa == seq[idx]):
             aa = choice(keys)
         seq = seq[:idx] + aa + seq[idx+1:]
-
     return seq
 
 def find_binding_site(
@@ -167,8 +164,8 @@ def find_re_sites(seq: DNA, *enzymes: str) -> dict:
     site_span_dict = {}
     for i, enzyme in enumerate(enzymes):
         site_span_dict[enzyme] = {}
-        site_span_dict[enzyme]["Forward"] = []
-        site_span_dict[enzyme]["Reverse"] = []
+        site_span_dict[enzyme][BioOrientation.FORWARD] = []
+        site_span_dict[enzyme][BioOrientation.REVERSE] = []
 
         if seq.is_circular(): # Pad sequence up to (enzyme length - 1) because wraparound is valid
             sequence = seq.top_strand + seq.top_strand[:len(enzyme) - 1]
@@ -182,50 +179,78 @@ def find_re_sites(seq: DNA, *enzymes: str) -> dict:
             f_span = match.span()
             if f_span[1] >= seq.length:
                 f_span = (f_span[0], f_span[1] - seq.length)
-            site_span_dict[enzyme]["Forward"].append(f_span)
+            site_span_dict[enzyme][BioOrientation.FORWARD].append(f_span)
 
         r_matches = re.finditer(enzyme_seqs[i], rev_sequence)
         for match in r_matches:
             r_span = match.span()
             if r_span[1] > seq.length:
                 r_span = (r_span[0], r_span[1] - seq.length)
-            site_span_dict[enzyme]["Reverse"].append(r_span)
+            site_span_dict[enzyme][BioOrientation.REVERSE].append(r_span)
 
     return site_span_dict
 
-def validate_sites(site_dict: dict, seq_len: int, circular: bool, padding: int = 6) -> bool:
+
+def validate_sites(
+    site_dict: dict, seq_len: int, circular: bool, padding: int = 6
+) -> dict[tuple[int,int],str] | None:
     """Helper function for digest().
-    Validates whether or not a cut site exists and can be used."""
-    # TODO: Also have this validate that multiple cut sites aren't too close
-    valid: bool = False
+    Validates whether or not a cut site(s) exists and can be used.
+    Return a dictionary mapping the cut site tuples with their respective enzyme."""
     spans: list[tuple[int, int]] = []
-    for val in site_dict.values():
-        for orientation in val.keys():
-            for lst in val[orientation]:
+    tuple_dict: dict[tuple[int,int], tuple[int,str]] = {}
+    return_dict: dict[tuple[int,int],str] = {}
+    enzymes = list(site_dict.keys())
+    # TODO: Handle double cutters as just generating multiple tuples?
+
+    for i, val in enumerate(enzymes):
+        # A site must exist for either Forward or Reverse
+        if not site_dict[val][BioOrientation.FORWARD] and not site_dict[val][BioOrientation.REVERSE]:
+            return None
+        for orientation in site_dict[val].keys():
+            for span in site_dict[val][orientation]:
                 if not circular:
-                    if lst:
-                        valid = True
-                        for span in lst:
+                    if span:
+                        if orientation == BioOrientation.FORWARD:
                             if span[0] < padding: # Must have at least padding bases for digestion to work if linear
-                                return False
-                else: # Padding not an issue if circular
-                    if lst:
-                        valid = True
-                if orientation == "Reverse":
-                    lst = (seq_len - lst[0], seq_len - lst[1]) # Convert to forward orientation
-                    spans.append(lst)
-                else:
-                    spans.append(lst)
-    if not spans: return False
+                                return None
+                        else: # Checking reverse orientation
+                            if span[1] >= seq_len - padding:
+                                return None
+                if orientation == BioOrientation.REVERSE:
+                    span = (seq_len - span[1], seq_len - span[0]) # Convert to forward orientation
+                spans.append(span)
+                tuple_dict[span] = (i, orientation)
+                if span not in return_dict.keys():
+                    return_dict[span] = (val, orientation) # Automatically deals with palindromic sequences, there can be only one key
 
-    # Check span overlaps?
-    for s1 in spans:
-        for s2 in spans:
+    if not spans: return None
+
+    # Validate span overlaps
+    for i, s1 in enumerate(tuple_dict.keys()):
+        for j, s2 in enumerate(tuple_dict.keys()):
             if s1 != s2:
-                pass # re_enzymes_offsets
+                e1 = enzymes[tuple_dict[s1][0]] # s1's enzyme
+                e2 = enzymes[tuple_dict[s2][0]] # s2's enzyme
+                if tuple_dict[s1][1] == BioOrientation.FORWARD:
+                    e1_cut_span = (s1[0] + re_enzymes_offsets[e1][0], s1[0] + re_enzymes_offsets[e1][0] + re_enzymes_offsets[e1][1])
+                else: # Must reverse from span[1] because it's 5' bottom strand
+                    e1_cut_span = (s1[1] - re_enzymes_offsets[e1][0], s1[1] - re_enzymes_offsets[e1][0] - re_enzymes_offsets[e1][1])
+                
+                if tuple_dict[s2][1] == BioOrientation.REVERSE:
+                    e2_cut_span = (s2[0] + re_enzymes_offsets[e2][0], s2[0] + re_enzymes_offsets[e2][0] + re_enzymes_offsets[e2][1])
+                else:
+                    e2_cut_span = (s2[1] - re_enzymes_offsets[e2][0], s2[1] - re_enzymes_offsets[e2][0] - re_enzymes_offsets[e2][1])
 
-    if valid: return True
-    return False
+                # Check for cutting the re site
+                if (e1_cut_span[0] > s2[0] and e1_cut_span[0] < s2[1]) or (e1_cut_span[1] > s2[0] and e1_cut_span[1] < s2[1]) \
+                or (e1_cut_span[0] < s2[0] and e1_cut_span[1] > s2[1]): # TODO: Confirm this works
+                    return None
+                # Check for cutting the cut site
+                if (e1_cut_span[0] > e2_cut_span[0] and e1_cut_span[0] < e2_cut_span[1]) or (e1_cut_span[1] > e2_cut_span[0] and e1_cut_span[1] < e2_cut_span[1]):
+                    return None
+
+    return return_dict # Edge case: both cut in opposite directions, 15+ bp away from recog site such that cutting with one would disallow cutting of the other... 2 products?? Or pick one?
 
 # TODO: Generate random pool of DNA seqs?
 

@@ -76,7 +76,7 @@ class DNA():
             self.annotations = []
         """
         If offsets is None, then we assume that this is the original double- or single-stranded DNA
-        sequence. If offsets is a tuple of ((top_start, top_end), (bottom_start, bottom_end)), then
+        sequence. If offsets is a tuple of ((top_5', top_3'), (bottom_3', bottom_5')), then
         we assume that this was created from a reaction and contains overhangs.
         Can grab both the exact way to print and also figure out the overhang of each using these tuples.
         """
@@ -291,6 +291,11 @@ class DNA():
 
     def __len__(self):
         return self.length
+    
+    def __lt__(self, oth):
+        if not isinstance(oth, DNA):
+            raise Exception("Cannot compare between different objects!")
+        return hash(self.seq) < hash(oth.seq)
 
     def sequence(self) -> None:
         """Prints a string of the DNA sequence."""
@@ -332,6 +337,9 @@ class DNA():
     
     def is_double_stranded(self):
         return self.strandedness == BioProperty.DOUBLE_STRANDED
+    
+    def is_cut(self):
+        return self.strandedness == BioProperty.CUT
         
     def add_annotation(self, annotation: BioAnnotation) -> None:
         """Adds an annotation to the DNA sequence."""

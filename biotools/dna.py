@@ -276,7 +276,7 @@ class DNA():
                 return DNA(self.seq[start:stop], self.name, self.type, self.circular, self.strandedness, annotations, self.offsets)
 
     def __hash__(self):
-        # TODO: json.dump() hash
+        # TODO: json.dump() hash, need a better one for gibson reaction
         return hash(self.seq)
     
     def __eq__(self, other):

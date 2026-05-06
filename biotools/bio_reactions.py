@@ -4,7 +4,7 @@ from oligo import Oligo
 from bio_exceptions import ReactionError
 from bio_annotation import BioOrientation
 from bio_enums import *
-from bio_utils import find_binding_site, rev_comp, find_re_sites, validate_sites
+from bio_utils import find_binding_site, rev_comp, find_re_sites, validate_sites, check_homology
 from bio_alphabet import re_enzymes, re_enzymes_offsets
 import re
 
@@ -179,9 +179,70 @@ def ligate(*inputs: DNA) -> DNA:
             raise ReactionError("Cannot ligate uncut input!")
     raise NotImplementedError
 
-def gel_extract(*inputs: DNA, extraction_len: int) -> DNA | list[DNA]:
+def gel_extract(*inputs: DNA, extraction_len_range: tuple[int,int]) -> DNA | list[DNA]:
     raise NotImplementedError
 
-def gibson(*inputs: DNA, homology_length: int = 15):
-    """Ligates pieces together with some homology length."""
-    raise NotImplementedError
+def gibson(*inputs: DNA, min_homology_len: int = 20, max_homology_len: int = 40) -> DNA | list[DNA]:
+    """Performs a Gibson cloning reaction on one or more products. The order of products does
+    not matter, and homology will be determined. This will generate all possible products from the 
+    input parts and return either a single product or list of products.
+    """
+    if min_homology_len < 20 or max_homology_len < 20:
+        raise ValueError("Must check for at least 20 bases of homology between products.")
+
+    all_parts: list[DNA] = []
+    for part in inputs:
+        if part.is_circular():
+            raise ReactionError(f"Unable to use circular products in a Gibson reaction! {part} is circular.")
+        if part not in all_parts:  # In case we duplicate parts
+            all_parts.append(part)
+    all_parts = sorted(all_parts)  # Sort for deterministic fragment generation
+
+    parts_dict: dict[str, list[tuple[int, DNA]]] = {}
+    for part in all_parts:
+        parts_dict[part] = [[], []]
+        for p in all_parts:
+            if (h_idx := check_homology(part, p, min_homology_len, max_homology_len)) is not None:  # 5' checking
+                parts_dict[part][0].append((p, h_idx))
+            if (h_idx := check_homology(p, part, min_homology_len, max_homology_len)) is not None:  # 3' checking
+                parts_dict[part][1].append((p, h_idx))
+
+    # Check that everything matches at both ends
+    for k in parts_dict.keys():
+        if not parts_dict[k][0] or not parts_dict[k][1]:
+            raise ReactionError(f"Input {k.name} did not have homology at one or both ends.")
+
+    # Create the final Assembly
+    final_assemblies: list[DNA] = []
+    assembly_set_list: list[set[DNA]] = []
+    for part in all_parts:
+        final_name = part.name+" "
+        valid: bool = True
+        used_assemblies: set[DNA] = {part}
+        first_assem, assem = part, part
+        final_assembly = first_assem
+        final_idx: int = 0
+        while not any(asmb[0] == first_assem for asmb in parts_dict[assem][1]):
+            if parts_dict[assem][1][0][0] in used_assemblies:  # Cycle found
+                valid = False
+                break
+            oth_assem = parts_dict[assem][1][0][0]
+            final_name += oth_assem.name+" "
+            idx = parts_dict[assem][1][0][1]
+            final_assembly = final_assembly.concatenate([oth_assem[idx:]])
+            assem = oth_assem
+            used_assemblies.add(oth_assem)
+            final_idx = idx
+
+        if valid:
+            if used_assemblies not in assembly_set_list:  # Ensure configuration is unique
+                assembly_set_list.append(used_assemblies)
+                final_assembly = final_assembly[: len(final_assembly) - final_idx]
+                final_assembly.name = final_name + "Gibson Product"
+                final_assembly.circular = BioProperty.CIRCULAR
+                final_assemblies.append(final_assembly)
+
+    if len(final_assemblies) == 1:
+        return final_assemblies[0]
+    return final_assemblies
+

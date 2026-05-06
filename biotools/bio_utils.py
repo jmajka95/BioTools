@@ -159,7 +159,10 @@ def find_re_sites(seq: DNA, *enzymes: str) -> dict:
     of a DNA sequence. Returns a dictionary mapping the site to a list of tuples of their
     spans for both forward and reverse strand.
     """
-    enzyme_seqs = [re_enzymes[enzyme] for enzyme in enzymes]
+    try:
+        enzyme_seqs = [re_enzymes[enzyme] for enzyme in enzymes]
+    except KeyError:
+        raise ReactionError(f"One of provided enzymes not found. Must use one of: {sorted(list(re_enzymes.keys()))}")
 
     site_span_dict = {}
     for i, enzyme in enumerate(enzymes):
@@ -189,7 +192,6 @@ def find_re_sites(seq: DNA, *enzymes: str) -> dict:
             site_span_dict[enzyme][BioOrientation.REVERSE].append(r_span)
 
     return site_span_dict
-
 
 def validate_sites(
     site_dict: dict, seq_len: int, circular: bool, padding: int = 6
@@ -251,6 +253,20 @@ def validate_sites(
                     return None
 
     return return_dict # Edge case: both cut in opposite directions, 15+ bp away from recog site such that cutting with one would disallow cutting of the other... 2 products?? Or pick one?
+
+def check_homology(p: DNA, q: DNA, min_len: int, max_len: int) -> int | None:
+    """Helper function for gibson().
+    Checks if there is any homology from min_len to max_len. Compares p's 5' end with q's 3' end.
+    """
+
+    for i in range(min_len, max_len + 1):
+        if p.seq[:i] == "" or q.seq[-i:] == "":  # Edge case where we are outside both ranges, so returns "" for one or both
+            return None
+        if p[:i].top_strand == q[-i:].top_strand:
+            if len(p) == i or len(q) == i:  # Edge case where the entire sequence matches if short enough
+                return None
+            return i
+    return None
 
 # TODO: Generate random pool of DNA seqs?
 

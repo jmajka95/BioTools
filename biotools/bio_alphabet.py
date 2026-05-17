@@ -1,3 +1,5 @@
+from bio_enums import BioOrientation
+
 # File for defining alphabets (e.g. DNA, RNA, Protein)
 # Also defines complementary bases
 
@@ -139,7 +141,7 @@ AAV_seqs = {
     "AAV9":"MAADGYLPDWLEDNLSEGIREWWALKPGAPQPKANQQHQDNARGLVLPGYKYLGPGNGLDKGEPVNAADAAALEHDKAYDQQLKAGDNPYLKYNHADAEFQERLKEDTSFGGNLGRAVFQAKKRLLEPLGLVEEAAKTAPGKKRPVEQSPQEPDSSAGIGKSGAQPAKKRLNFGQTGDTESVPDPQPIGEPPAAPSGVGSLTMASGGGAPVADNNEGADGVGSSSGNWHCDSQWLGDRVITTSTRTWALPTYNNHLYKQISNSTSGGSSNDNAYFGYSTPWGYFDFNRFHCHFSPRDWQRLINNNWGFRPKRLNFKLFNIQVKEVTDNNGVKTIANNLTSTVQVFTDSDYQLPYVLGSAHEGCLPPFPADVFMIPQYGYLTLNDGSQAVGRSSFYCLEYFPSQMLRTGNNFQFSYEFENVPFHSSYAHSQSLDRLMNPLIDQYLYYLSKTINGSGQNQQTLKFSVAGPSNMAVQGRNYIPGPSYRQQRVSTTVTQNNNSEFAWPGASSWALNGRNSLMNPGPAMASHKEGEDRFFPLSGSLIFGKQGTGRDNVDADKVMITNEEEIKTTNPVATESYGQVATNHQSAQAQAQTGWVQNQGILPGMVWQDRDVYLQGPIWAKIPHTDGNFHPSPLMGGFGMKHPPPQILIKNTPVPADPPTAFNKDKLNSFITQYSTGQVSVEIEWELQKENSKRWNPEIQYTSNYYKSNNVEFAVNTEGVYSEPRPIGTRYLTRNL",
 }
 
-re_enzymes = {
+re_enzymes = { # K : V is Enzyme_Name : Recognition_Sequence
     # Type IIS Enzymes
     "BsaI": "GGTCTC",
     "Esp3I": "CGTCTC",
@@ -149,36 +151,71 @@ re_enzymes = {
     # Type II Enzymes
     "SpeI": "ACTAGT",
     "HindIII": "AAGCTT",
+    "SacI": "GAGCTC",
+    "NotI": "GCGGCCGC",
 
     # Blunt Cutters
     "SwaI": "ATTTAAAT",
     "EcoRV": "GATATC",
-    "ScaI": "AGTACT"
+    "ScaI": "AGTACT",
+
+    # Double Cutters
+    "BsaXI": "ACNNNNNCTCC",
+    "AjuI": "GAANNNNNNNTTGG"
+}
+
+re_enzymes_regex = { # K : V is Enzyme_Name : Regex Pattern
+    # Type IIS Enzymes
+    "BsaI": "GGTCTC",
+    "Esp3I": "CGTCTC",
+    "BsmBI": "CGTCTC",
+    "PaqCI": "CACCTGC",
+
+    # Type II Enzymes
+    "SpeI": "ACTAGT",
+    "HindIII": "AAGCTT",
+    "SacI": "GAGCTC",
+    "NotI": "GCGGCCGC",
+
+    # Blunt Cutters
+    "SwaI": "ATTTAAAT",
+    "EcoRV": "GATATC",
+    "ScaI": "AGTACT",
+
+    # Double Cutters
+    "BsaXI": "AC[AGCTWSMKRYBDHVNX]{5}CTCC", # AC(N_5)CTCC
+    "AjuI": "GAA[AGCTWSMKRYBDHVNX]{7}TTGG"  # GAA(N_7)TTGG
 }
 
 re_enzymes_inverted = {
     v : k for k, v in re_enzymes.items()
 }
 
-# These are of the form (A, B)
-# Where A is the offset to reindex from the beginning of the enzyme recognition site
-# and B is the offset for both the end of the top strand and beginning of the bottom strand
-# TODO: Make a list of tuples for multi-cutters
+# These are of the form (A, B, C, D)
+# A is the offset to reindex from the beginning of the enzyme recognition site
+# B is the offset for both the end of the top strand and beginning of the bottom strand
+# C is the cutter orientation, where BioOrientation.BOTTOM means the bottom overhangs the top, and BioOrientation.TOP means the opposite
 re_enzymes_offsets = {
     # Type IIS Enzymes
-    "BsaI": (7, 4),
-    "Esp3I": (7, 4),
-    "BsmBI": (7, 4),
-    "PaqCI": (11, 4),
+    "BsaI": (7, 4, BioOrientation.BOTTOM),
+    "Esp3I": (7, 4, BioOrientation.BOTTOM),
+    "BsmBI": (7, 4, BioOrientation.BOTTOM),
+    "PaqCI": (11, 4, BioOrientation.BOTTOM),
 
-    # Type II Enzymes
-    "SpeI": (1, 4),
-    "HindIII": (1, 4),
+    # Type II Enzymes - Bottom Cutters
+    "SpeI": (1, 4, BioOrientation.BOTTOM),
+    "HindIII": (1, 4, BioOrientation.BOTTOM),
+    "NotI": (2, 4, BioOrientation.BOTTOM),
+
+    # Type II Enzymes - Top Cutters
+    "SacI": (1, 4, BioOrientation.TOP),
 
     # Blunt Cutters
-    "SwaI": (4, 0),
-    "EcoRV": (3, 0),
-    "ScaI": (3, 0)
+    "SwaI": (4, 0, BioOrientation.BOTTOM),
+    "EcoRV": (3, 0, BioOrientation.BOTTOM),
+    "ScaI": (3, 0, BioOrientation.BOTTOM),
 
-    # BsaXI (double cutter)
+    # Double Cutters
+    "BsaXI": [(-12, 3, BioOrientation.TOP), (18, 3, BioOrientation.TOP)], # (9/12)ACNNNNNCTCC(10/7)
+    "AjuI": [(-12, 5, BioOrientation.TOP), (20, 5, BioOrientation.TOP)] # (7/12)GAANNNNNNNTTGG(11/6)
 }

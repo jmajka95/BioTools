@@ -157,12 +157,12 @@ def find_binding_site(
 def find_re_sites(seq: DNA, *enzymes: str) -> dict:
     """Finds all instances of the provided enzymes on the forward and reverse strand
     of a DNA sequence. Returns a dictionary mapping the site to a list of tuples of their
-    spans for both forward and reverse strand.
+    spans for both the forward and the reverse strand.
     """
     try:
-        enzyme_seqs = [re_enzymes[enzyme] for enzyme in enzymes]
+        enzyme_seqs = [re_enzymes_regex[enzyme] for enzyme in enzymes]
     except KeyError:
-        raise ReactionError(f"One of provided enzymes not found. Must use one of: {sorted(list(re_enzymes.keys()))}")
+        raise ReactionError(f"One of provided enzymes not found. Must use one of: {sorted(list(re_enzymes_regex.keys()))}")
 
     site_span_dict = {}
     for i, enzyme in enumerate(enzymes):
@@ -189,7 +189,9 @@ def find_re_sites(seq: DNA, *enzymes: str) -> dict:
             r_span = match.span()
             if r_span[1] > seq.length:
                 r_span = (r_span[0], r_span[1] - seq.length)
-            site_span_dict[enzyme][BioOrientation.REVERSE].append(r_span)
+            f_span = (seq.length - r_span[1], seq.length - r_span[0])
+            if not f_span in site_span_dict[enzyme][BioOrientation.FORWARD]: # Don't want duplicate spans if there's a palindromic recognition site
+                site_span_dict[enzyme][BioOrientation.REVERSE].append(r_span)
 
     return site_span_dict
 
@@ -200,65 +202,83 @@ def validate_sites(
     Validates whether or not a cut site(s) exists and can be used.
     Return a dictionary mapping the cut site tuples with their respective enzyme."""
     spans: list[tuple[int, int]] = []
-    tuple_dict: dict[tuple[int,int], tuple[int,str]] = {}
-    return_dict: dict[tuple[int,int],str] = {}
+    tuple_list: list[tuple[tuple[int,int,BioOrientation], str]] = []
     enzymes = list(site_dict.keys())
-    # TODO: Handle double cutters as just generating multiple tuples?
 
     for i, val in enumerate(enzymes):
-        # A site must exist for either Forward or Reverse
+        # A site must exist for each enzyme for either Forward or Reverse
         if not site_dict[val][BioOrientation.FORWARD] and not site_dict[val][BioOrientation.REVERSE]:
             return None
+
         for orientation in site_dict[val].keys():
             for span in site_dict[val][orientation]:
                 if not circular:
                     if span:
                         if orientation == BioOrientation.FORWARD:
-                            if span[0] < padding: # Must have at least padding bases for digestion to work if linear
-                                return None
+                            if span[0] < padding:
+                                raise ReactionError("Must have at least padding bases for digestion to work if input is linear!")
                         else: # Checking reverse orientation
                             if span[1] >= seq_len - padding:
-                                return None
+                                raise ReactionError("Must have at least padding bases for digestion to work if input is linear!")
                 if orientation == BioOrientation.REVERSE:
                     span = (seq_len - span[1], seq_len - span[0]) # Convert to forward orientation
                 spans.append(span)
-                tuple_dict[span] = (i, orientation)
-                if span not in return_dict.keys():
-                    return_dict[span] = (val, orientation) # Automatically deals with palindromic sequences, there can be only one key
 
-    if not spans: return None
-
-    # Validate span overlaps
-    for i, s1 in enumerate(tuple_dict.keys()):
-        for j, s2 in enumerate(tuple_dict.keys()):
-            if s1 != s2:
-                e1 = enzymes[tuple_dict[s1][0]] # s1's enzyme
-                e2 = enzymes[tuple_dict[s2][0]] # s2's enzyme
-                if tuple_dict[s1][1] == BioOrientation.FORWARD:
-                    e1_cut_span = (s1[0] + re_enzymes_offsets[e1][0], s1[0] + re_enzymes_offsets[e1][0] + re_enzymes_offsets[e1][1])
-                else: # Must reverse from span[1] because it's 5' bottom strand
-                    e1_cut_span = (s1[1] - re_enzymes_offsets[e1][0], s1[1] - re_enzymes_offsets[e1][0] - re_enzymes_offsets[e1][1])
-                
-                if tuple_dict[s2][1] == BioOrientation.REVERSE:
-                    e2_cut_span = (s2[0] + re_enzymes_offsets[e2][0], s2[0] + re_enzymes_offsets[e2][0] + re_enzymes_offsets[e2][1])
+                # Generate list for ( (int, int, int, BioOrientation) , (int, int, str, BioOrientation) )
+                if isinstance(re_enzymes_offsets[val], list):
+                    offsets = re_enzymes_offsets[val] if orientation == BioOrientation.FORWARD else re_enzymes_offsets[val][::-1]
+                    for tup in offsets:
+                        tuple_list.append((tup, span, val, orientation))
                 else:
-                    e2_cut_span = (s2[1] - re_enzymes_offsets[e2][0], s2[1] - re_enzymes_offsets[e2][0] - re_enzymes_offsets[e2][1])
+                    tuple_list.append((re_enzymes_offsets[val], span, val, orientation))
+                                       
+    if not spans: return None
+    seen = set()
+    tuple_list = [tup for tup in tuple_list if not (tup in seen or seen.add(tup))] # Clean up repeats
+
+    cut_spans = []
+    cuts_tuple_list = []
+    # print(tuple_list)
+    # Validate span overlaps
+    for i, tup_1 in enumerate(tuple_list):
+        for tup_2 in tuple_list:
+            if tup_1 != tup_2:
+                # Get recognition site tuples
+                site_1 = tup_1[1]
+                site_2 = tup_2[1]
+                if tup_1[-1] == BioOrientation.FORWARD:
+                    e1_cut_span = (site_1[0] + tup_1[0][0], tup_1[0][0] + tup_1[0][0] + tup_1[0][1])
+                else: # Must reverse from span[1] because it's 5' bottom strand
+                    e1_cut_span = (site_1[1] - tup_1[0][0], site_1[1] - tup_1[0][0] - tup_1[0][1])
+                cuts_tuple_list.append((tup_1[0], tup_1[1], tup_1[2], e1_cut_span, tup_1[3]))
+                cut_spans.append(e1_cut_span)
+    
+                if tup_2[-1] == BioOrientation.FORWARD:
+                    e2_cut_span = (site_2[0] + tup_2[0][0], site_2[0] + tup_2[0][0] + tup_2[0][1])
+                else:
+                    e2_cut_span = (site_2[1] - tup_2[0][0], site_2[1] - tup_2[0][0] - tup_2[0][1])
 
                 # Check for cutting the re site
-                if (e1_cut_span[0] > s2[0] and e1_cut_span[0] < s2[1]) or (e1_cut_span[1] > s2[0] and e1_cut_span[1] < s2[1]) \
-                or (e1_cut_span[0] < s2[0] and e1_cut_span[1] > s2[1]): # TODO: Confirm this works
+                if (e1_cut_span[0] > site_2[0] and e1_cut_span[0] < site_2[1]) or (e1_cut_span[1] > site_2[0] and e1_cut_span[1] < site_2[1]) \
+                or (e1_cut_span[0] < site_2[0] and e1_cut_span[1] > site_2[1]): # TODO: Confirm this works
                     return None
                 # Check for cutting the cut site
                 if (e1_cut_span[0] > e2_cut_span[0] and e1_cut_span[0] < e2_cut_span[1]) or (e1_cut_span[1] > e2_cut_span[0] and e1_cut_span[1] < e2_cut_span[1]):
                     return None
+                
+    # Sort based on cut tuple
+    sorted_tuple_list = []
+    for s in sorted(cut_spans):
+        for tup in cuts_tuple_list:
+            if tup[3] == s and tup not in sorted_tuple_list:
+                sorted_tuple_list.append(tup)
 
-    return return_dict # Edge case: both cut in opposite directions, 15+ bp away from recog site such that cutting with one would disallow cutting of the other... 2 products?? Or pick one?
+    return sorted_tuple_list # Edge case: both cut in opposite directions, 15+ bp away from recog site such that cutting with one would disallow cutting of the other... 2 products?? Or pick one?
 
 def check_homology(p: DNA, q: DNA, min_len: int, max_len: int) -> int | None:
     """Helper function for gibson().
     Checks if there is any homology from min_len to max_len. Compares p's 5' end with q's 3' end.
     """
-
     for i in range(min_len, max_len + 1):
         if p.seq[:i] == "" or q.seq[-i:] == "":  # Edge case where we are outside both ranges, so returns "" for one or both
             return None

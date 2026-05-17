@@ -46,7 +46,8 @@ class DNA():
         circular: str = BioProperty.LINEAR,
         strandedness: str = BioProperty.DOUBLE_STRANDED,
         annotations: list[BioAnnotation] | None = None,
-        offsets: tuple[tuple[int,int], tuple[int,int]] | None = None
+        offsets: tuple[tuple[int,int], tuple[int,int]] | None = None,
+        parent: DNA = None
     ):
         """Default constructor."""
         if validate_sequence(seq, type):
@@ -84,6 +85,7 @@ class DNA():
             self.offsets = offsets
         else:
             self.offsets = None
+        self.parent = parent
 
     @property
     def length(self) -> int:
@@ -118,10 +120,10 @@ class DNA():
         annotations: list[BioAnnotation] = []
         if isinstance(index, int): # Single integer provided
             if index > self.length - 1:
-                raise Exception("Index provided is out of bounds of sequence length!")
+                raise IndexError("Index provided is out of bounds of sequence length!")
             if index < 0: # Valid to have index like [-int] if abs(int) < sequence length
                 if abs(index) > self.length:
-                    raise Exception("Index provided is out of bounds of sequence length!")
+                    raise IndexError("Index provided is out of bounds of sequence length!")
                 index = len(self.seq) + index
             for annot in self.annotations:
                 new_span = None
@@ -136,21 +138,21 @@ class DNA():
                         annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
                     elif isinstance(annot, Block):
                         annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
-            return DNA(self.seq[index], self.name, self.type, self.circular, self.strandedness, annotations, self.offsets)
+            return DNA(self.seq[index], self.name, self.type, self.circular, self.strandedness, annotations, self.offsets, self)
         elif isinstance(index, slice):
             start = index.start if index.start is not None else 0
             if start < 0:
                 if abs(start) > self.length:
-                    raise Exception("Index provided is out of bounds of sequence length!")
+                    raise IndexError("Index provided is out of bounds of sequence length!")
                 start = len(self.seq) + start
             stop = index.stop if index.stop is not None else len(self.seq)
             new_length = stop - start
             # Check orientation, and continue as appropriate
             if self.circular == BioProperty.LINEAR:
                 if start > stop:
-                    raise Exception("For linear DNA, first index must be less than the second!")
+                    raise IndexError("For linear DNA, first index must be less than the second!")
                 elif start < 0 or stop > len(self.seq):
-                    raise Exception("Cannot have indices beyond bounds of sequence length!")
+                    raise IndexError("Cannot have indices beyond bounds of sequence length!")
                 # Grab annotations that fall within slice
                 for annot in self.annotations:
                     new_span = None
@@ -165,6 +167,8 @@ class DNA():
                                 new_span = (0, annot.span[1]-start)
                             else:
                                 new_span = (0, new_length)
+                        elif annot.span[1] > stop:
+                            new_span = (0, new_length)
                     elif annot.span[1] > start and annot.span[1] < stop: # Start occurs earlier than new start
                         if annot.span[1] <= stop:
                             new_span = (0, annot.span[1]-start)
@@ -176,10 +180,10 @@ class DNA():
                                 annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
                             elif isinstance(annot, Block):
                                 annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
-                return DNA(self.seq[start:stop], self.name, self.type, self.circular, self.strandedness, annotations, self.offsets)
+                return DNA(self.seq[start:stop], self.name, self.type, self.circular, self.strandedness, annotations, self.offsets, self)
             else: # Circular
                 if start < 0 or stop > self.length or stop < 0 or start > self.length:
-                    raise Exception("Cannot have indices beyond bounds of sequence length!")
+                    raise IndexError("Cannot have indices beyond bounds of sequence length!")
                 if start > stop:
                     new_length = (self.length - start) + stop
                     for annot in self.annotations:
@@ -231,49 +235,49 @@ class DNA():
                                     annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
                                 elif isinstance(annot, Block):
                                     annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
-                    return DNA(self.seq[start:]+self.seq[:stop], self.name, self.type, self.circular, self.strandedness, annotations)
-                # Regular workflow because the slice is like a linear fragment (start < stop)
-                for annot in self.annotations:
-                    new_span = None
-                    if annot.span[0] < annot.span[1]:
-                        if annot.span[0] >= start and annot.span[0] < stop: # Start of span is within start and stop
-                            if annot.span[1] <= stop:
-                                new_span = (annot.span[0]-start, annot.span[1]-start)
-                            else:
-                                new_span = (annot.span[0]-start, new_length)
-                        elif annot.span[0] < start:
-                            if annot.span[1] > start and annot.span[1] <= stop:
+                    return DNA(self.seq[start:]+self.seq[:stop], self.name, self.type, self.circular, self.strandedness, annotations, self)
+                else: # Regular workflow because the slice is like a linear fragment (start < stop)
+                    for annot in self.annotations:
+                        new_span = None
+                        if annot.span[0] < annot.span[1]:
+                            if annot.span[0] >= start and annot.span[0] < stop: # Start of span is within start and stop
+                                if annot.span[1] <= stop:
+                                    new_span = (annot.span[0]-start, annot.span[1]-start)
+                                else:
+                                    new_span = (annot.span[0]-start, new_length)
+                            elif annot.span[0] < start:
+                                if annot.span[1] > start and annot.span[1] <= stop:
+                                    if annot.span[1] <= stop:
+                                        new_span = (0, annot.span[1]-start)
+                                    else:
+                                        new_span = (0, new_length)
+                                elif annot.span[1] > stop:
+                                    new_span = (0, new_length)
+                            elif annot.span[1] > start and annot.span[1] < stop: # Start occurs earlier than new start
                                 if annot.span[1] <= stop:
                                     new_span = (0, annot.span[1]-start)
                                 else:
                                     new_span = (0, new_length)
-                            else:
-                                new_span = (0, new_length)
-                        elif annot.span[1] > start and annot.span[1] < stop: # Start occurs earlier than new start
-                            if annot.span[1] <= stop:
-                                new_span = (0, annot.span[1]-start)
-                            else:
-                                new_span = (0, new_length)
-                    else: # End span > beginning span
-                        if annot.span[0] > start and annot.span[0] >= stop:
-                            if annot.span[1] >= start and annot.span[1] <= stop:
-                                new_span = (0, annot.span[1] - start)
-                            elif annot.span[1] >= start and annot.span[1] > stop: # Greater than stop
-                                new_span = (0, new_length)
-                        elif annot.span[0] <= stop and annot.span[0] > start and annot.span[1] >= start:
-                            if (annot.span[1] - start) == 0:
-                                new_span = (annot.span[0] - start, new_length)
-                            else:
-                                new_span = (annot.span[0] - start, annot.span[1] - start)
-                        elif annot.span[0] <= stop and annot.span[0] > start and annot.span[1] < start:
-                            new_span = (annot.span[0] - start, stop - start)
-                    if new_span is not None:
-                        if new_span[0] != new_span[1]:
-                            if isinstance(annot, BioAnnotation):
-                                annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
-                            elif isinstance(annot, Block):
-                                annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
-                return DNA(self.seq[start:stop], self.name, self.type, self.circular, self.strandedness, annotations, self.offsets)
+                        else: # End span > beginning span
+                            if annot.span[0] > start and annot.span[0] >= stop:
+                                if annot.span[1] >= start and annot.span[1] <= stop:
+                                    new_span = (0, annot.span[1] - start)
+                                elif annot.span[1] >= start and annot.span[1] > stop: # Greater than stop
+                                    new_span = (0, new_length)
+                            elif annot.span[0] <= stop and annot.span[0] > start and annot.span[1] >= start:
+                                if (annot.span[1] - start) == 0:
+                                    new_span = (annot.span[0] - start, new_length)
+                                else:
+                                    new_span = (annot.span[0] - start, annot.span[1] - start)
+                            elif annot.span[0] <= stop and annot.span[0] > start and annot.span[1] < start:
+                                new_span = (annot.span[0] - start, stop - start)
+                        if new_span is not None:
+                            if new_span[0] != new_span[1]:
+                                if isinstance(annot, BioAnnotation):
+                                    annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
+                                elif isinstance(annot, Block):
+                                    annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
+                return DNA(self.seq[start:stop], self.name, self.type, self.circular, self.strandedness, annotations, self.offsets, self)
 
     def __hash__(self):
         # TODO: json.dump() hash, need a better one for gibson reaction
@@ -300,7 +304,7 @@ class DNA():
     def sequence(self) -> None:
         """Prints a string of the DNA sequence."""
         if self.strandedness == BioProperty.SINGLE_STRANDED:
-            print(self.seq)
+            print(self.seq) # TODO: Also make this cut by offsets?
         elif self.strandedness == BioProperty.CUT:
             # NOTE: Products can probably only be double-stranded? Should I check this?
             print(self.offsets[0][0]*" "+self.seq[self.offsets[0][0]:self.length - self.offsets[0][1]])
@@ -323,14 +327,21 @@ class DNA():
         """Returns a copy of the DNA sequence."""
         return DNA(self.seq, self.name, self.type, self.circular, self.strandedness, self.offsets)
     
-    # TODO: Return the inversion of the annotations, if seq has them? I think it's useful to have this function to do just this
-    # While bio_utils rev_comp is generic and just returns a string
     def rev_comp(self) -> DNA:
         """Returns a DNA copy of the reverse complement of the sequence."""
         if not self.is_double_stranded():
             raise Exception("Cannot generate reverse complement of single-stranded molecule!")
         else:
-            return DNA(rev_comp(self.seq), self.name+"_revcomp", self.type, self.circular, self.strandedness, self.annotations, self.offsets)
+            annots: list[BioAnnotation] = []
+            # Generate inverted annotations 
+            for a in self.annotations:
+                new_span = (self.length - a.span[1], self.length - a.span[0])
+                orient = BioOrientation.FORWARD if a.orientation == BioOrientation.REVERSE else BioOrientation.REVERSE
+                if isinstance(a, BioAnnotation):
+                    annots.append(BioAnnotation(new_span, a.name, orient))
+                elif isinstance(a, Block):
+                    annots.append(Block(new_span, a.name, orient, a.pool))
+            return DNA(rev_comp(self.seq), self.name+"_revcomp", self.type, self.circular, self.strandedness, annots, self.offsets)
         
     def is_circular(self):
         return self.circular == BioProperty.CIRCULAR
@@ -450,10 +461,8 @@ class DNA():
             raise Exception("Cannot re-index a linear fragment!")
 
         seq: str = ""
-        if inplace:
-            self.seq = self.seq[index:] + self.seq[:index]
-        else:
-            seq = self.seq[index:] + self.seq[:index]
+        if inplace: self.seq = self.seq[index:] + self.seq[:index]
+        else: seq = self.seq[index:] + self.seq[:index]
 
         annotations: list[BioAnnotation] = []
         # Re-generate annotation indices

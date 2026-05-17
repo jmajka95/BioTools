@@ -20,6 +20,8 @@ class BioOrientation(Enum):
     """Class for representing orientation properties."""
     FORWARD = "Forward"
     REVERSE = "Reverse"
+    TOP = "Top"
+    BOTTOM = "Bottom"
 
 class BioFile(Enum):
     """Class for biological file names."""

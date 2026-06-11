@@ -43,14 +43,14 @@ class BioAnnotation():
         else:
             return f"<<< Annotation | {self.name} | [Span: {self.span}] <<<" 
 
-    def __eq__(self, other):
+    def __eq__(self, other: BioAnnotation) -> bool:
         return (self.span, self.name, self.orientation) == \
                (other.span, other.name, other.orientation)
     
-    def __leq__(self, other):
+    def __leq__(self, other: BioAnnotation) -> bool:
         return self.span[0] <= other.span[0]
     
-    def __lt__(self, other):
+    def __lt__(self, other: BioAnnotation) -> bool:
         return self.span[0] < other.span[0]
 
 class Block(BioAnnotation):
@@ -68,6 +68,25 @@ class Block(BioAnnotation):
 
     def __repr__(self):
         if self.orientation == BioOrientation.FORWARD:
-            return f">>> BLOCK | {self.name} | [Span: {self.span}] | [{self.pool.length} Sequence(s)] >>>" # TODO: More elaborate span length calculation instead of just span?
+            return f">>> BLOCK | {self.name} | [Span: {self.span}] | Length: {self.span[1] - self.span[0]} | [{self.pool.length} Sequence(s)] >>>"
         else:
-            return f"<<< BLOCK | {self.name} | [Span: {self.span}] | [{self.pool.length} Sequence(s)] <<<" 
+            return f"<<< BLOCK | {self.name} | [Span: {self.span}] | Length: {self.span[1] - self.span[0]} | [{self.pool.length} Sequence(s)] <<<"
+
+######################### FUNCTIONS #########################
+
+def reverse_annotations(annotations: list[BioAnnotation], length: int, rev_comp: bool = False) -> list[BioAnnotation]:
+    """Reverses the provided annotations"""
+    reversed_annotations: list[BioAnnotation] = []
+    for a in annotations:
+        new_span = (length - a.span[1], length - a.span[0])
+        if rev_comp:
+            orient = BioOrientation.FORWARD if a.orientation == BioOrientation.REVERSE else BioOrientation.REVERSE
+        else:
+            orient = a.orientation
+
+        if isinstance(a, BioAnnotation):
+            reversed_annotations.append(BioAnnotation(new_span, a.name, orient))
+        elif isinstance(a, Block):
+            reversed_annotations.append(Block(new_span, a.name, orient, a.pool)) # TODO: Reverse the pool as well?
+
+    return reversed_annotations

@@ -109,10 +109,10 @@ class BioFileParser():
                             span = (0,0)
                             orientation = BioOrientation.FORWARD
                     elif add_sequence:
-                        m = re.search(r"\d+\s+([atgcnwsmkrybvhdATGCNWSMKRYBVHD\s]+)", line) # TODO: Allow degenerate bases?
+                        m = re.search(r"\d+\s+([atgcnwsmkrybvhdATGCNWSMKRYBVHD\s]+)", line)
                         new_seq = re.sub(r"\s+", "", m.group(1))
                         seq += new_seq
-        return sequences
+        return sequences[0] if len(sequences) == 1 else sequences
 
     def to_fasta(self, *seqs: DNA | list[DNA], filename: str = "test.fasta") -> None:
         """Generates a fasta file of the provided sequences"""

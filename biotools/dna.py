@@ -36,7 +36,7 @@ class DNA():
 
     # TODO: ARE THERE ANY LIBRARIES THAT COMBINE SEQUENCE STUFF, MELTING TEMP, CLONING ABILITY (COMBINATORIAL),
     # IN ONE LIBRARY?
-    # TODO: Reactions and their products are stored in something
+    # TODO: Make an examples folder with .ipynb of examples? Or just provide as .py file
 
     def __init__(
         self, 
@@ -51,7 +51,7 @@ class DNA():
     ):
         """Default constructor."""
         if validate_sequence(seq, type):
-            self.seq = seq.upper() # NOTE: I want capitalized sequences
+            self.seq = seq.upper() # NOTE: Sequences should be capitalized
         else:
             raise InvalidSequence("Must provide a valid DNA sequence!")
         self.name = name
@@ -95,7 +95,8 @@ class DNA():
     @property
     def top_strand(self) -> str:
         """The top strand shown 5' -> 3'."""
-        # TODO: Update to show correct top and bottom strands if cut w/ offsets
+        if self.offsets:
+            return self.seq[self.offsets[0][0] : (self.length - self.offsets[0][1])]
         return self.seq
     
     @property
@@ -104,19 +105,21 @@ class DNA():
         if self.strandedness == BioProperty.SINGLE_STRANDED:
             raise Exception("Cannot return bottom strand of a single-stranded sequence!")
         else:
+            if self.offsets:
+                return rev_comp(self.seq)[self.offsets[1][1] : (self.length - self.offsets[1][0])]
             return rev_comp(self.seq)
 
     def __repr__(self):
-        if self.circular == BioProperty.CIRCULAR:
+        if self.is_circular():
             return f"{self.name} | {self.type.value} | [{self.length} bp] | [{len(self.annotations)} Annotation(s)] | O"
-        elif self.strandedness == BioProperty.DOUBLE_STRANDED:
+        elif self.is_double_stranded():
             return f"{self.name} | {self.type.value} | [{self.length} bp] | [{len(self.annotations)} Annotation(s)] | ==>"
-        elif self.strandedness == BioProperty.CUT:
+        elif self.is_cut():
             return f"{self.name} | {self.type.value} | [{self.length} bp] | [{len(self.annotations)} Annotation(s)] | Cut"
         else:
             return f"{self.name} | {self.type.value} | [{self.length} bp] | [{len(self.annotations)} Annotation(s)] | -->"
     
-    def __getitem__(self, index): # TODO: Generate reverses as well?? [::-1] Might not be as hard as I think, can calculate everything and invert in some clever way
+    def __getitem__(self, index):
         annotations: list[BioAnnotation] = []
         if isinstance(index, int): # Single integer provided
             if index > self.length - 1:
@@ -138,7 +141,16 @@ class DNA():
                         annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
                     elif isinstance(annot, Block):
                         annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
-            return DNA(self.seq[index], self.name, self.type, self.circular, self.strandedness, annotations, self.offsets, self)
+            return DNA(
+                self.seq[index], 
+                self.name, 
+                self.type, 
+                self.circular, 
+                self.strandedness, 
+                annotations, 
+                self.offsets, 
+                self
+            )
         elif isinstance(index, slice):
             start = index.start if index.start is not None else 0
             if start < 0:
@@ -147,8 +159,13 @@ class DNA():
                 start = len(self.seq) + start
             stop = index.stop if index.stop is not None else len(self.seq)
             new_length = stop - start
+
+            if index.step is not None: # Check that step is -1
+                if index.step != -1:
+                    raise ValueError("Only reversing is allowed as a step for slicing (e.g. dna[::-1])!")
+                
             # Check orientation, and continue as appropriate
-            if self.circular == BioProperty.LINEAR:
+            if not self.is_circular():
                 if start > stop:
                     raise IndexError("For linear DNA, first index must be less than the second!")
                 elif start < 0 or stop > len(self.seq):
@@ -180,13 +197,27 @@ class DNA():
                                 annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
                             elif isinstance(annot, Block):
                                 annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
-                return DNA(self.seq[start:stop], self.name, self.type, self.circular, self.strandedness, annotations, self.offsets, self)
+                seq = self.seq[start:stop]
+                if index.step is not None:
+                    annotations = reverse_annotations(annotations, new_length)
+                    seq = seq[::-1]
+                return DNA(
+                    seq, 
+                    self.name, 
+                    self.type, 
+                    self.circular, 
+                    self.strandedness, 
+                    annotations, 
+                    self.offsets, 
+                    self
+                )
             else: # Circular
                 if start < 0 or stop > self.length or stop < 0 or start > self.length:
                     raise IndexError("Cannot have indices beyond bounds of sequence length!")
                 if start > stop:
                     new_length = (self.length - start) + stop
                     for annot in self.annotations:
+                        new_span: tuple[int, int] = None
                         if annot.span[0] >= start: # Span starts within slice bounds of circular sequence
                             if annot.span[1] <= stop:
                                 new_span = (annot.span[0] - start, (self.length - start) + annot.span[1])
@@ -235,10 +266,22 @@ class DNA():
                                     annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
                                 elif isinstance(annot, Block):
                                     annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
-                    return DNA(self.seq[start:]+self.seq[:stop], self.name, self.type, self.circular, self.strandedness, annotations, self)
+                    seq = self.seq[start:]+self.seq[:stop]
+                    if index.step is not None:
+                        annotations = reverse_annotations(annotations, new_length)
+                        seq = seq[::-1]
+                    return DNA(
+                        seq,
+                        self.name,
+                        self.type,
+                        BioProperty.LINEAR,
+                        self.strandedness,
+                        annotations,
+                        self
+                    )
                 else: # Regular workflow because the slice is like a linear fragment (start < stop)
                     for annot in self.annotations:
-                        new_span = None
+                        new_span: tuple[int, int] = None
                         if annot.span[0] < annot.span[1]:
                             if annot.span[0] >= start and annot.span[0] < stop: # Start of span is within start and stop
                                 if annot.span[1] <= stop:
@@ -277,7 +320,19 @@ class DNA():
                                     annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
                                 elif isinstance(annot, Block):
                                     annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
-                return DNA(self.seq[start:stop], self.name, self.type, self.circular, self.strandedness, annotations, self.offsets, self)
+                seq = self.seq[start:stop]
+                if index.step is not None:
+                    annotations = reverse_annotations(annotations, new_length)
+                    seq = seq[::-1]
+                return DNA(
+                    seq, 
+                    self.name, self.type, 
+                    BioProperty.LINEAR, 
+                    self.strandedness, 
+                    annotations, 
+                    self.offsets, 
+                    self
+                )
 
     def __hash__(self):
         # TODO: json.dump() hash, need a better one for gibson reaction
@@ -296,15 +351,15 @@ class DNA():
     def __len__(self):
         return self.length
     
-    def __lt__(self, oth):
+    def __lt__(self, oth: DNA) -> bool:
         if not isinstance(oth, DNA):
             raise Exception("Cannot compare between different objects!")
-        return hash(self.seq) < hash(oth.seq)
+        return self.seq < oth.seq
 
     def sequence(self) -> None:
         """Prints a string of the DNA sequence."""
         if self.strandedness == BioProperty.SINGLE_STRANDED:
-            print(self.seq) # TODO: Also make this cut by offsets?
+            print(self.seq)
         elif self.strandedness == BioProperty.CUT:
             # NOTE: Products can probably only be double-stranded? Should I check this?
             print(self.offsets[0][0]*" "+self.seq[self.offsets[0][0]:self.length - self.offsets[0][1]])
@@ -315,6 +370,7 @@ class DNA():
             print(rev_comp(self.seq)[::-1])
 
     def info(self) -> None:
+        # TODO: Update to improve
         print("Name: ", self.name)
         print("Sequence: ", self.seq)
         print("Reverse Complement: ", rev_comp(self.seq))
@@ -325,22 +381,15 @@ class DNA():
 
     def copy(self) -> DNA:
         """Returns a copy of the DNA sequence."""
-        return DNA(self.seq, self.name, self.type, self.circular, self.strandedness, self.offsets)
+        return DNA(self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations, self.offsets, self.parent)
     
     def rev_comp(self) -> DNA:
         """Returns a DNA copy of the reverse complement of the sequence."""
         if not self.is_double_stranded():
             raise Exception("Cannot generate reverse complement of single-stranded molecule!")
         else:
-            annots: list[BioAnnotation] = []
             # Generate inverted annotations 
-            for a in self.annotations:
-                new_span = (self.length - a.span[1], self.length - a.span[0])
-                orient = BioOrientation.FORWARD if a.orientation == BioOrientation.REVERSE else BioOrientation.REVERSE
-                if isinstance(a, BioAnnotation):
-                    annots.append(BioAnnotation(new_span, a.name, orient))
-                elif isinstance(a, Block):
-                    annots.append(Block(new_span, a.name, orient, a.pool))
+            annots: list[BioAnnotation] = reverse_annotations(self.annotations, self.length, True)
             return DNA(rev_comp(self.seq), self.name+"_revcomp", self.type, self.circular, self.strandedness, annots, self.offsets)
         
     def is_circular(self):
@@ -366,16 +415,33 @@ class DNA():
         # Validate indices
         if not all(sp >= 0 and sp <= self.length for sp in annotation.span):
             raise InvalidAnnotationException("Span integers must be valid!")
+        
+        # Check valid name because of from_annotation()
+        if annotation.name in [annot.name for annot in self.annotations]:
+            raise ValueError("Annotations must have unique names!")
 
         if annotation not in self.annotations:
             bisect.insort(self.annotations, annotation)
+
+    def from_annotation(self, annotation: str) -> DNA:
+        """Returns a DNA sequence of a slice of the provided annotation."""
+        if annotation not in [annot.name for annot in self.annotations]:
+            raise ValueError(f"Cannot find annotation: {annotation}")
+
+        annot_span: tuple[int,int]
+        for annot in self.annotations:
+            if annot.name == annotation:
+                annot_span = annot.span
+                break
+
+        return self[annot_span[0] : annot_span[1]]
 
     def concatenate(self, seq_list: list[DNA], name: str = "") -> DNA:
         """Concatenates two or more DNA sequences together, returning a new DNA sequence."""
 
         # Validate all orientations/Bioproperties are the same
-        if not (all(seq.strandedness == BioProperty.DOUBLE_STRANDED for seq in seq_list) or \
-                all(seq.strandedness == BioProperty.SINGLE_STRANDED for seq in seq_list)):
+        if not (all(seq.is_double_stranded() for seq in seq_list) or \
+                all(not seq.is_double_stranded() for seq in seq_list)):
             raise InvalidSequence("Not all provided sequences are the same strandedness!")
         
         # A circular sequence can't be concatenated. Where do we concatenate?
@@ -389,9 +455,10 @@ class DNA():
             raise InvalidSequence("Not all provided sequences are DNA!")
 
         # Generate new DNA sequence
-        new_seq = self.seq + "".join([seq.top_strand for seq in seq_list])
+        new_seq = self.seq + "".join([sequence.seq for sequence in seq_list])
 
         # Generate new annotations, changing their indices as needed
+        # TODO: Need to check if annotations are the same (not on slice, though)
         annotations = self.annotations
         offset = len(self.seq) # Used for calculating new offset in slices
         for seq in seq_list:
@@ -401,10 +468,19 @@ class DNA():
                     annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
             offset += len(seq)
 
-        return DNA(new_seq, name, self.type, self.circular, self.strandedness, annotations, self.offsets)
+        return DNA(
+            new_seq, 
+            name, 
+            self.type, 
+            self.circular, 
+            self.strandedness, 
+            annotations, 
+            ((self.offsets[0][0], seq_list[-1].offsets[0][1]), (self.offsets[1][0], seq_list[-1].offsets[1][1]))
+        )
 
     def to_oligo(self, slice: tuple[int, int] | None = None, reverse: bool = False) -> Oligo:
-        """Converts a DNA piece to an oligo or a slice of the DNA if slice is provided."""
+        """Converts a DNA piece to an oligo or a slice of the DNA if slice is provided.
+        If reverse is True, takes the reverse complement of the sequence."""
         from oligo import Oligo
         if slice:
             # Validations
@@ -431,6 +507,8 @@ class DNA():
     # TODO: Improve visualization for this
     def print_annotations(self) -> None:
         """Prints annotations to visualize them sequentially"""
+        # TODO: One thing could be something like the length of the annotation in bases is its width.
+        # If there's ever overlapping annotations, they will appear stacked
         sorted_annots = self.annotations.copy()
         reprs = []
 

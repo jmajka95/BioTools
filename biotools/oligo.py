@@ -1,8 +1,8 @@
 from dna import DNA
 from bio_enums import *
 from bio_annotation import BioAnnotation
-import primer3
-
+import json
+import requests # type: ignore
 
 class Oligo(DNA):
     """Class representing single-stranded oligos, typically used as primers."""
@@ -19,6 +19,7 @@ class Oligo(DNA):
         NOTE: Strandedness for oligos is single-stranded.
         NOTE: Oligos cannot have annotations.
         """
+        # TODO: Make this its own class. Starting to make less sense having it be subclass of DNA
 
         super().__init__(
             seq,
@@ -36,9 +37,13 @@ class Oligo(DNA):
         print("Type: ", self.type)
         print(f"Circular: {self.circular}")
         print(f"Strandedness: {self.strandedness}")
-        print(f"Tm: {primer3.calc_tm(self.seq):.2f}")
+        print(f"Tm: {self.calc_tm()}")
 
-    #TODO: Generate an NEB-type melting temp calc
-    def _calc_tm(self):
-        raise NotImplementedError
-    
+    def calc_tm(self, prod_code: str = "q5hs-1"):
+        """Calculates a melting temperature for the primer"""
+        res = requests.get(f"https://tmapi.neb.com/tm/{prod_code}/0.5/{self.seq}")
+
+        r = json.loads(res.content)
+        if not r['success']:
+            raise Exception(f"Failed to retrieve Tm. Error code: {r['error'][0]}")
+        return r['data']['tm1']

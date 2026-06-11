@@ -191,7 +191,7 @@ re_enzymes_inverted = {
     v : k for k, v in re_enzymes.items()
 }
 
-# These are of the form (A, B, C, D)
+# These are of the form (A, B, C)
 # A is the offset to reindex from the beginning of the enzyme recognition site
 # B is the offset for both the end of the top strand and beginning of the bottom strand
 # C is the cutter orientation, where BioOrientation.BOTTOM means the bottom overhangs the top, and BioOrientation.TOP means the opposite

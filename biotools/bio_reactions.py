@@ -12,6 +12,7 @@ import re
 # Probably in a different class that can set up reactions in
 # Probably can just make a compiler class that utilizes some functionality from the CombinatorialCompiler
 # Should put assign_codons() in utils
+# hlper funcs begin with _
 
 def amplify(
     f_primer: list[Oligo], 
@@ -61,20 +62,19 @@ def amplify(
             product.name = template.name+f"_PCR_Product_{i+j+1}"
             final_products.append(product)
 
-    if len(final_products) == 1:
-        return final_products[0]
-    return final_products
+    return final_products[0] if len(final_products) == 1 else final_products
 
 def kld(input: DNA) -> DNA:
     """Performs KLD on a linear DNA fragment.
     For more information, see https://www.neb.com/en-ca/protocols/kld-enzyme-mix-reaction-protocol-m0554
     """
-    # TODO: Length check necessary?
+    if input.length < 740: # NOTE: 740 is the shortest theoretical length possible for a viable plasmid
+        raise ReactionError("Cannot generate plasmids of length shorter than 740!")
     if input.is_circular():
         raise ReactionError("Cannot perform KLD on a circular input!")
-    return DNA(input.seq, input.type, BioProperty.CIRCULAR, input.strandedness, input.annotations)
+    return DNA(input.seq, input.type, BioProperty.CIRCULAR, input.strandedness, input.annotations, input.parent)
 
-def digest(input: DNA, enzymes: list[str], gel_extract: tuple[int, int] = None) -> DNA | list[DNA]:
+def digest(input: DNA, enzymes: list[str], gel_extraction: tuple[int, int] = None) -> DNA | list[DNA]:
     """Digests the input with the provided enzyme(s) and returns all products formed.
     Use gel_extract to grab products within a specific size range, inclusive.
     NOTE: Enzymes must be valid keys of bio_alphabet.re_enzymes"""
@@ -244,40 +244,86 @@ def digest(input: DNA, enzymes: list[str], gel_extract: tuple[int, int] = None) 
                 product_num += 1
                 products.append(product)
         except IndexError:
-            raise ReactionError(f"{enzyme} cut off of the input fragment. Check enzyme and cleavage location.")
+            raise ReactionError(f"{enzyme} cut off of the input fragment. Check enzyme and cleavage locations.")
         
     # Gel extraction
-    if gel_extract:
-        extracted_products: list[DNA] = [product for product in products if (product.length >= gel_extract[0] and product.length <= gel_extract[1])]
-        if len(extracted_products) == 1: return extracted_products[0]
-        return extracted_products
+    if gel_extraction:
+        return gel_extract(*products, extraction_len_range=gel_extraction)
 
-    if len(products) == 1: return products[0]
-    return products
+    return products[0] if len(products) == 1 else products
 
-def ligate(*inputs: DNA) -> DNA:
-    """Ligates together the provided inputs."""
-    # TODO: How to handle blunt ligation? Maybe separate flag?
+def ligate(*inputs: DNA, gel_extraction: tuple[int, int] = None) -> DNA | list[DNA]:
+    """Ligates the provided inputs together. Will generate self-ligating products if possible."""
     for input in inputs:
         if input.is_circular():
-            raise ReactionError("Cannot ligate circular input!")
+            raise ReactionError(f"Cannot ligate circular input! {part} is circular.")
         if not input.is_cut():
             raise ReactionError("Cannot ligate uncut input!")
     
     all_parts: list[DNA] = []
     for part in inputs:
-        if part.is_circular():
-            raise ReactionError(f"Unable to use circular products in a Gibson reaction! {part} is circular.")
         if part not in all_parts:  # In case we duplicate parts
             all_parts.append(part)
     all_parts = sorted(all_parts)  # Sort for deterministic fragment generation
 
+    parts_dict: dict[str, list[tuple[DNA, int]], tuple[DNA, int]] = {}
+    for part in all_parts:
+        parts_dict[part] = [[], []]
+        for p in all_parts:
+            if part.get_overhangs()[0] == rev_comp(p.get_overhangs()[1]): # part's 5' checking p's 3' rev comp
+                parts_dict[part][0].append((p, len(part.get_overhangs()[0])))
+            if p.get_overhangs()[0] == rev_comp(part.get_overhangs()[1]): # p's 5' checking to part's 3' rev comp
+                parts_dict[part][1].append((p, len(p.get_overhangs()[0])))
+
+    # Check that everything matches at both ends
+    for k in parts_dict.keys():
+        if not parts_dict[k][0] or not parts_dict[k][1]:
+            raise ReactionError(f"Input {k.name} did not ligate at one or both ends.")
+        
+    # Create the final Assembly
+    final_assemblies: list[DNA] = []
+    assembly_set_list: list[set[DNA]] = []
+    for part in all_parts:
+        final_name = [part.name]
+        valid: bool = True
+        used_assemblies: set[DNA] = {part}
+        first_assem, assem = part, part
+        final_assembly = first_assem.copy()
+        final_idx: int = 0
+        while not any(asmb[0] == first_assem for asmb in parts_dict[assem][1]):
+            if parts_dict[assem][1][0][0] in used_assemblies:  # Cycle found not involving first product
+                valid = False
+                break
+            oth_assem = parts_dict[assem][1][0][0]
+            final_name.append(oth_assem.name)
+            final_idx = parts_dict[assem][1][0][1]
+            final_assembly = final_assembly.concatenate([oth_assem[final_idx:]])
+            assem = oth_assem
+            used_assemblies.add(oth_assem)
+
+        if valid:
+            if used_assemblies not in assembly_set_list:  # Ensure configuration is unique
+                assembly_set_list.append(used_assemblies)
+                final_assembly = final_assembly[: len(final_assembly) - final_idx]
+                final_assembly.offsets = ((0, 0), (0, 0)) # Final ligation should have no overhangs
+                final_assembly.name = f"{set(final_name)} Ligation Product"
+                final_assembly.strandedness = BioProperty.DOUBLE_STRANDED
+                final_assembly.circular = BioProperty.CIRCULAR
+                final_assemblies.append(final_assembly)
+
+    # Gel extraction
+    if gel_extraction:
+        return gel_extract(*final_assemblies, extraction_len_range=gel_extraction)
+    
+    return final_assemblies[0] if len(final_assemblies) == 1 else final_assemblies
+
+def blunt_ligate(*inputs: DNA, gel_extract: tuple[int, int] = None) -> DNA | list[DNA]:
+    """Performs a blunt ligation on the provided products."""
+    # Check each input has no overhangs
+    # Concatenate all inputs
     raise NotImplementedError
 
-def gel_extract(*inputs: DNA, extraction_len_range: tuple[int,int]) -> DNA | list[DNA]:
-    raise NotImplementedError
-
-def gibson(*inputs: DNA, min_homology_len: int = 20, max_homology_len: int = 40, gel_extract: tuple[int, int] = None) -> DNA | list[DNA]:
+def gibson(*inputs: DNA, min_homology_len: int = 20, max_homology_len: int = 40, gel_extraction: tuple[int, int] = None) -> DNA | list[DNA]:
     """Performs a Gibson cloning reaction on one or more products. The order of products does
     not matter, and homology will be determined. This will generate all possible products from the 
     input parts and return either a single product or list of products.
@@ -293,7 +339,8 @@ def gibson(*inputs: DNA, min_homology_len: int = 20, max_homology_len: int = 40,
             all_parts.append(part)
     all_parts = sorted(all_parts)  # Sort for deterministic fragment generation
 
-    parts_dict: dict[str, list[tuple[int, DNA]]] = {}
+    # Generate linking dictionary
+    parts_dict: dict[str, list[tuple[DNA, int]], tuple[DNA, int]] = {}
     for part in all_parts:
         parts_dict[part] = [[], []]
         for p in all_parts:
@@ -318,16 +365,15 @@ def gibson(*inputs: DNA, min_homology_len: int = 20, max_homology_len: int = 40,
         final_assembly = first_assem
         final_idx: int = 0
         while not any(asmb[0] == first_assem for asmb in parts_dict[assem][1]):
-            if parts_dict[assem][1][0][0] in used_assemblies:  # Cycle found
+            if parts_dict[assem][1][0][0] in used_assemblies:  # Cycle found not involving first product
                 valid = False
                 break
             oth_assem = parts_dict[assem][1][0][0]
             final_name.append(oth_assem.name)
-            i = parts_dict[assem][1][0][1]
-            final_assembly = final_assembly.concatenate([oth_assem[i:]])
+            final_idx = parts_dict[assem][1][0][1]
+            final_assembly = final_assembly.concatenate([oth_assem[final_idx:]])
             assem = oth_assem
             used_assemblies.add(oth_assem)
-            final_idx = i
 
         if valid:
             if used_assemblies not in assembly_set_list:  # Ensure configuration is unique
@@ -338,12 +384,15 @@ def gibson(*inputs: DNA, min_homology_len: int = 20, max_homology_len: int = 40,
                 final_assemblies.append(final_assembly)
 
     # Gel extraction
-    if gel_extract: 
-        extracted_products: list[DNA] = [assembly for assembly in final_assemblies if (assembly.length >= gel_extract[0] and assembly.length <= gel_extract[1])]
-        if len(extracted_products) == 1: return extracted_products[0]
-        return extracted_products
+    if gel_extract:
+        return gel_extract(*final_assemblies, extraction_len_range=gel_extraction)
+    
+    return final_assemblies[0] if len(final_assemblies) == 1 else final_assemblies
 
-    if len(final_assemblies) == 1:
-        return final_assemblies[0]
-    return final_assemblies
+def gel_extract(*inputs: DNA, extraction_len_range: tuple[int,int]) -> DNA | list[DNA]:
+    """From the provided inputs, extracts inputs within the specified extraction range, inclusive."""
+    extracted_inputs: list[DNA] = [input for input in inputs if (input.length >= extraction_len_range[0] and input.length <= extraction_len_range[1])]
+    return extracted_inputs[0] if len(extracted_inputs) == 1 else extracted_inputs
 
+# TODO: End repair reaction?
+# TODO: Anneal reaction? As in, find the overlapping bases and combine, making offsets as needed and make "Cut"

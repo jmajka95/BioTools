@@ -17,6 +17,8 @@ from bio_pool import BioPool
 from bio_annotation import BioAnnotation, BioOrientation
 import random
 import re
+import requests # type: ignore
+import json
 
 # TODO: Implement all of this for DNA instead of str?
 
@@ -238,9 +240,8 @@ def validate_sites(
 
     cut_spans = []
     cuts_tuple_list = []
-    # print(tuple_list)
     # Validate span overlaps
-    for i, tup_1 in enumerate(tuple_list):
+    for tup_1 in tuple_list:
         for tup_2 in tuple_list:
             if tup_1 != tup_2:
                 # Get recognition site tuples
@@ -278,6 +279,7 @@ def validate_sites(
 def check_homology(p: DNA, q: DNA, min_len: int, max_len: int) -> int | None:
     """Helper function for gibson().
     Checks if there is any homology from min_len to max_len. Compares p's 5' end with q's 3' end.
+    Returns the length of homology that exists between p and q.
     """
     for i in range(min_len, max_len + 1):
         if p.seq[:i] == "" or q.seq[-i:] == "":  # Edge case where we are outside both ranges, so returns "" for one or both
@@ -288,7 +290,39 @@ def check_homology(p: DNA, q: DNA, min_len: int, max_len: int) -> int | None:
             return i
     return None
 
+def get_annealing_temp(
+    primer_1: list[Oligo], 
+    primer_2: list[Oligo], 
+    conc: float = 0.5, 
+    prod_code: str = "q5hs-1"
+) -> int | list[int]:
+    """Generates an annealing temperature of the provided primers. This uses NEB's Tm API.
+    More information can be found at https://tmapi.neb.com/
+    NOTE: prod_code has been defaulted to that corresponding to Q5 2X Hot Start."""
+    
+    url = 'https://tmapi.neb.com/tm/batch'
+    primer_pairs = [(p1.seq, p2.seq) for p1, p2 in zip(primer_1, primer_2)]
+    input = {
+        "seqpairs": primer_pairs,
+        "conc": conc,
+        "prodcode": prod_code
+    }
+    headers = {"content-type" : "application/json"}
+    res = requests.post(url, data=json.dumps(input), headers=headers)
+    r = json.loads(res.content)
+
+    annealing_temps: list[int] = []
+    if r['success']:
+        for row in r['data']:
+            annealing_temps.append(row['ta'])
+    else:
+        print(f"Request failure. Error code: {r['error'][0]}")
+
+    return annealing_temps[0] if len(annealing_temps) == 1 else annealing_temps
+
 # TODO: Generate random pool of DNA seqs?
+# TODO: Func for getting NEB prod codes?
+# get re enzymes, etc.
 
 # TODO: Alignment algorithm? Add to bio_io.py instead?
 def align_sequences(seq: str, ref: str) -> str:

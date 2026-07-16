@@ -1,35 +1,38 @@
+"""File defining utility functions to be used for simulation.
+"""
+
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterator
+from typing import TYPE_CHECKING, Iterator, Any
 if TYPE_CHECKING:
-    from dna import DNA
-    from rna import RNA
-    from protein import Protein
-    from oligo import Oligo
-    from re import Match
-    
-from bio_alphabet import *
+    from biotools.dna import DNA
+    from biotools.rna import RNA
+    from biotools.protein import Protein
+    from biotools.oligo import Oligo
+   
+from biotools.bio_alphabet import (
+    NT_COMPLEMENTS, RNA_COMPLEMENTS, NTs, AAs,
+    RNA_NTs, DNA_TO_RNA, RNA_CODON_AAs, AA_CODONS,
+    RE_ENZYMES_REGEX, RE_ENZYMES_OFFSETS
+)
+from biotools.bio_enums import BioMolecule
+from biotools.bio_exceptions import InvalidInstantiationException, ReactionError
+from biotools.bio_annotation import BioAnnotation, BioOrientation
+
 import numpy as np
-from random import choice, sample
-from bio_enums import *
-from bio_exceptions import *
-from bio_pool import BioPool
-from bio_annotation import BioAnnotation, BioOrientation
 import random
+from random import choice, sample, randint
 import re
+from re import Match
 import requests # type: ignore
 import json
-
-# TODO: Implement all of this for DNA instead of str?
-
-# File for defining utility functions #
 
 def rev_comp(seq: str, is_dna: bool = True) -> str:
     """Generates the reverse complement of an input."""
     seq = seq.upper()
     if is_dna:
-        return "".join([nt_complements[char] for char in seq[::-1]])
-    return "".join([rna_complements[char] for char in seq[::-1]])
+        return "".join([NT_COMPLEMENTS[char] for char in seq[::-1]])
+    return "".join([RNA_COMPLEMENTS[char] for char in seq[::-1]])
 
 def calc_mut_bounds(seq: str, ref: str) -> tuple[int, int, int]:
     """Function that generates mutation bounds comparing a sequence to a reference."""
@@ -61,7 +64,7 @@ def validate_sequence(seq: str, type: BioMolecule) -> bool:
         return all(char in NTs for char in seq)
     elif type == BioMolecule.RNA:
         return all(char in RNA_NTs for char in seq)
-    return all(char in AAs for char in seq)
+    return all(char in AAs for char in seq) # Default to amino acids
 
 def validate_annotations(seq: DNA, annotations: list[BioAnnotation]) -> bool:
     """Validates annotation spans for annotations being added to a sequence."""
@@ -69,45 +72,123 @@ def validate_annotations(seq: DNA, annotations: list[BioAnnotation]) -> bool:
         if annot.span[0] < 0 or annot.span[1] < 0:
             raise InvalidInstantiationException(f"Invalid annotation provided! One span is less than zero!")
         elif annot.span[0] > len(seq) or annot.span[1] > seq.length:
+            print(annot.span) # DEBUG
             raise InvalidInstantiationException(f"Invalid annotation provided! One span is higher than the sequence length!")
     return True
 
 def transcribe(dna: DNA) -> RNA:
     """Transcribes DNA into RNA."""
-    from rna import RNA
-    return RNA(seq="".join([dna_to_rna[char] for char in dna.seq]))
+    from biotools.rna import RNA
+    return RNA(seq="".join([DNA_TO_RNA[char] for char in dna.seq]))
 
 def translate(rna: RNA) -> Protein:
     """Translates RNA into protein."""
-    from protein import Protein
+    from biotools.protein import Protein
 
     if rna.length % 3 != 0:
         raise Exception("Cannot translate RNA sequence that contains a partial codon.")
-    return Protein(seq="".join([rna_codon_AAs[rna.seq[i:i+3]] for i in range(0, rna.length, 3)]))
+    return Protein(seq="".join([RNA_CODON_AAs[rna.seq[i:i+3]] for i in range(0, rna.length, 3)]))
 
-def reverse_translate(aa_seq: Protein) -> str:
+def reverse_translate(aa_seq: Protein, rand: bool = False) -> DNA:
     """Reverse translates an amino acid sequence by random codon choice."""
-    from dna import DNA
-    random.seed(1) # For consistent behavior
-    return DNA(seq="".join([choice(aa_codons[aa_seq.seq[i]]) for i in range(0, len(aa_seq))]))
+    from biotools.dna import DNA
+    if not rand:
+        random.seed(1) # For consistent behavior
+    return DNA(seq="".join([choice(AA_CODONS[aa_seq.seq[i]]) for i in range(0, len(aa_seq))]))
 
 def contains_re_site(seq: DNA, site: str) -> bool:
     """Returns True if the DNA sequence contains an re site, else False."""
+    if seq.is_circular():
+        return (site in seq.top_strand+seq.top_strand[: len(site) - 1]) \
+            or (site in seq.bottom_strand+seq.bottom_strand[: len(site) - 1])
     return (site in seq.top_strand) or (site in seq.bottom_strand)
 
-def generate_random_sequence(length: int, nt: bool = False) -> str:
-    """Generates a random sequence of either amino acids or nucleotides of a specified length."""
-    seq: str = ""
-    keys = list(aa_codons.keys())
+def generate_random_sequence(
+    length: int | tuple[int, int],
+    seq_type: BioMolecule,
+    n_seqs: int = 1,
+    enzyme_blacklist: list[str] | None = None,
+    kwargs: dict[str, Any] = {}
+) -> DNA | list[DNA] | Protein | RNA | list[RNA] | list[Protein]:
+    """Generates a random sequence of either amino acids or nucleotides of a specified length.
+    
+    Parameters
+    ----------
+    length: int | tuple[int, int]
+        If an int, it is the length of the sequence to generate.
+        If an int tuple, the range of values from which to generate sequences randomly
+    seq_type: BioMolecule
+        A BioMolecule to generate. Must be one of DNA, RNA, or Protein
+    n_seqs: int (Optional)
+        An integer of the number of sequences to generate 
+    enzyme_blacklist: list[str] (Optional)
+        A list of enzymes to avoid
+    kwargs: dict[Any] (Optional)
+        A dictionary of additional arguments for constructing DNA, RNA, or Proteins
 
-    for i in range(length):
-        aa = choice(keys)
-        while (aa == "*"):
-            aa = choice(keys)
-        seq += aa
-    if nt:
-        seq = reverse_translate(seq)
-    return seq
+    Returns
+    -------
+    DNA, a list of DNA, RNA, a list of RNA, Protein, or a list of Proteins
+    """
+    from biotools.dna import DNA
+    from biotools.rna import RNA
+    from biotools.protein import Protein
+
+    # TODO: Make recursive to add multiprocessing?
+    nt_keys = list(DNA_TO_RNA.keys())
+    rna_keys = list(DNA_TO_RNA.values())
+    aa_keys = list(AA_CODONS.keys())
+
+    seq_list = []
+    for n in range(n_seqs):
+        seq: str = ""
+        seq_length: int = 0
+        if isinstance(length, tuple):
+            seq_length = randint(length[0], length[1])
+        else:
+            seq_length = length
+        if enzyme_blacklist: # Check for restriction enzymes
+            valid = False
+            while not valid:
+                seq: str = ""
+                valid = True
+                for i in range(seq_length):
+                    if seq_type == BioMolecule.DNA:
+                        p = choice(nt_keys)
+                    elif seq_type == BioMolecule.RNA:
+                        p = choice(rna_keys)
+                    elif seq_type == BioMolecule.PROTEIN:
+                        p = choice(aa_keys)
+                        while (p == "*"):
+                            p = choice(aa_keys)
+                    seq += p
+                for e in enzyme_blacklist:
+                    m = re.search(RE_ENZYMES_REGEX[e], seq)
+                    if m:
+                        valid = False
+                        break
+                    m = re.search(RE_ENZYMES_REGEX[e], rev_comp(seq))
+                    if m:
+                        valid = False
+                        break
+        else: # No restriction enzyme validation
+            for i in range(seq_length):
+                    if seq_type == BioMolecule.DNA:
+                        p = choice(nt_keys)
+                    elif seq_type == BioMolecule.RNA:
+                        p = choice(rna_keys)
+                    elif seq_type == BioMolecule.PROTEIN:
+                        p = choice(aa_keys)
+                        while (p == "*"):
+                            p = choice(aa_keys)
+                    seq += p
+        if seq_type == BioMolecule.DNA:
+            seq_list.append(DNA(seq=seq, **kwargs))
+        elif seq_type == BioMolecule.RNA:
+            seq_list.append(RNA(seq=seq, **kwargs))
+        elif seq_type == BioMolecule.PROTEIN:
+            seq_list.append(Protein(seq=seq, **kwargs))
+    return seq_list[0] if len(seq_list) == 1 else seq_list
 
 def generate_random_mutations(seq: str, mut_range: tuple[int, int], num_muts: int) -> str:
     """Generates random mutants within the specified indices of the provided sequence."""
@@ -120,7 +201,7 @@ def generate_random_mutations(seq: str, mut_range: tuple[int, int], num_muts: in
         raise RuntimeError("Must submit a valid sequence.")
 
     indices = sample(range(mut_range[0], mut_range[1]+1), num_muts)
-    keys = list(aa_codons.keys())
+    keys = list(AA_CODONS.keys())
 
     for idx in indices:
         aa = choice(keys)
@@ -155,16 +236,15 @@ def find_binding_site(
     match = re.finditer(primer.seq[-min_binding_length:], template.seq)
     return match
 
-# TODO: Do we need Enzyme class for anything specific?
 def find_re_sites(seq: DNA, *enzymes: str) -> dict:
     """Finds all instances of the provided enzymes on the forward and reverse strand
     of a DNA sequence. Returns a dictionary mapping the site to a list of tuples of their
     spans for both the forward and the reverse strand.
     """
     try:
-        enzyme_seqs = [re_enzymes_regex[enzyme] for enzyme in enzymes]
+        enzyme_seqs = [RE_ENZYMES_REGEX[enzyme] for enzyme in enzymes]
     except KeyError:
-        raise ReactionError(f"One of provided enzymes not found. Must use one of: {sorted(list(re_enzymes_regex.keys()))}")
+        raise ReactionError(f"One of provided enzymes not found. Must use one of: {sorted(list(RE_ENZYMES_REGEX.keys()))}")
 
     site_span_dict = {}
     for i, enzyme in enumerate(enzymes):
@@ -199,10 +279,10 @@ def find_re_sites(seq: DNA, *enzymes: str) -> dict:
 
 def validate_sites(
     site_dict: dict, seq_len: int, circular: bool, padding: int = 6
-) -> dict[tuple[int,int],str] | None:
+) -> tuple[int, int, int, tuple[int, int], int]:
     """Helper function for digest().
     Validates whether or not a cut site(s) exists and can be used.
-    Return a dictionary mapping the cut site tuples with their respective enzyme."""
+    Returns a dictionary mapping the cut site tuples with their respective enzyme."""
     spans: list[tuple[int, int]] = []
     tuple_list: list[tuple[tuple[int,int,BioOrientation], str]] = []
     enzymes = list(site_dict.keys())
@@ -210,7 +290,7 @@ def validate_sites(
     for i, val in enumerate(enzymes):
         # A site must exist for each enzyme for either Forward or Reverse
         if not site_dict[val][BioOrientation.FORWARD] and not site_dict[val][BioOrientation.REVERSE]:
-            return None
+            raise ReactionError(f"No sites detected for {val}!")
 
         for orientation in site_dict[val].keys():
             for span in site_dict[val][orientation]:
@@ -218,28 +298,30 @@ def validate_sites(
                     if span:
                         if orientation == BioOrientation.FORWARD:
                             if span[0] < padding:
-                                raise ReactionError("Must have at least padding bases for digestion to work if input is linear!")
+                                raise ReactionError(f"Must have at least {padding} bases for digestion to work if input is linear!")
                         else: # Checking reverse orientation
                             if span[1] >= seq_len - padding:
-                                raise ReactionError("Must have at least padding bases for digestion to work if input is linear!")
+                                raise ReactionError(f"Must have at least {padding} bases for digestion to work if input is linear!")
                 if orientation == BioOrientation.REVERSE:
                     span = (seq_len - span[1], seq_len - span[0]) # Convert to forward orientation
                 spans.append(span)
 
                 # Generate list for ( (int, int, int, BioOrientation) , (int, int, str, BioOrientation) )
-                if isinstance(re_enzymes_offsets[val], list):
-                    offsets = re_enzymes_offsets[val] if orientation == BioOrientation.FORWARD else re_enzymes_offsets[val][::-1]
+                if isinstance(RE_ENZYMES_OFFSETS[val], list):
+                    offsets = RE_ENZYMES_OFFSETS[val] if orientation == BioOrientation.FORWARD else RE_ENZYMES_OFFSETS[val][::-1]
                     for tup in offsets:
                         tuple_list.append((tup, span, val, orientation))
                 else:
-                    tuple_list.append((re_enzymes_offsets[val], span, val, orientation))
+                    tuple_list.append((RE_ENZYMES_OFFSETS[val], span, val, orientation))
                                        
-    if not spans: return None
-    seen = set()
+    if not spans: 
+        raise ReactionError("No valid spans found!")
+    
+    seen: set[tuple[tuple[int,int,BioOrientation], str]] = set()
     tuple_list = [tup for tup in tuple_list if not (tup in seen or seen.add(tup))] # Clean up repeats
 
-    cut_spans = []
-    cuts_tuple_list = []
+    cut_spans: list[tuple[int, int]] = []
+    cuts_tuple_list: tuple[int, int, int, tuple[int, int], int] = []
     # Validate span overlaps
     for tup_1 in tuple_list:
         for tup_2 in tuple_list:
@@ -261,29 +343,28 @@ def validate_sites(
 
                 # Check for cutting the re site
                 if (e1_cut_span[0] > site_2[0] and e1_cut_span[0] < site_2[1]) or (e1_cut_span[1] > site_2[0] and e1_cut_span[1] < site_2[1]) \
-                or (e1_cut_span[0] < site_2[0] and e1_cut_span[1] > site_2[1]): # TODO: Confirm this works
-                    return None
+                or (e1_cut_span[0] < site_2[0] and e1_cut_span[1] > site_2[1]):
+                    raise ReactionError("Enzyme cuts re site!")
                 # Check for cutting the cut site
                 if (e1_cut_span[0] > e2_cut_span[0] and e1_cut_span[0] < e2_cut_span[1]) or (e1_cut_span[1] > e2_cut_span[0] and e1_cut_span[1] < e2_cut_span[1]):
-                    return None
+                    raise ReactionError("Enzyme cuts cut site!")
                 
     # Sort based on cut tuple
-    sorted_tuple_list = []
+    sorted_tuple_list: list[tuple[int, int, int, tuple[int, int], int]] = []
     for s in sorted(cut_spans):
         for tup in cuts_tuple_list:
             if tup[3] == s and tup not in sorted_tuple_list:
                 sorted_tuple_list.append(tup)
 
-    return sorted_tuple_list # Edge case: both cut in opposite directions, 15+ bp away from recog site such that cutting with one would disallow cutting of the other... 2 products?? Or pick one?
+    return sorted_tuple_list
 
 def check_homology(p: DNA, q: DNA, min_len: int, max_len: int) -> int | None:
     """Helper function for gibson().
     Checks if there is any homology from min_len to max_len. Compares p's 5' end with q's 3' end.
     Returns the length of homology that exists between p and q.
     """
+    max_len = min(max_len, len(p), len(q))
     for i in range(min_len, max_len + 1):
-        if p.seq[:i] == "" or q.seq[-i:] == "":  # Edge case where we are outside both ranges, so returns "" for one or both
-            return None
         if p[:i].top_strand == q[-i:].top_strand:
             if len(p) == i or len(q) == i:  # Edge case where the entire sequence matches if short enough
                 return None
@@ -319,10 +400,6 @@ def get_annealing_temp(
         print(f"Request failure. Error code: {r['error'][0]}")
 
     return annealing_temps[0] if len(annealing_temps) == 1 else annealing_temps
-
-# TODO: Generate random pool of DNA seqs?
-# TODO: Func for getting NEB prod codes?
-# get re enzymes, etc.
 
 # TODO: Alignment algorithm? Add to bio_io.py instead?
 def align_sequences(seq: str, ref: str) -> str:

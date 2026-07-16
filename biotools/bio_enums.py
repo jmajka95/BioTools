@@ -1,4 +1,18 @@
-# Enums for common indentifiers
+"""Enums for common biological identifying information. 
+Contains the following Enums:
+
+1. BioMolecule
+
+2. BioProperty
+
+3. BioOrientation
+
+4. BioFile
+
+5. BioReaction
+
+"""
+
 from enum import Enum
 
 class BioMolecule(Enum):
@@ -28,3 +42,12 @@ class BioFile(Enum):
     FASTA = "Fasta"
     GENBANK = "Genbank"
     FASTQ = "Fastq"
+
+class BioReaction(Enum):
+    """Class representing cloning reactions used in BioReactionGraphs."""
+    AMPLIFY = "Amplify"
+    ANNEAL = "Anneal"
+    DIGEST = "Digest"
+    GIBSON = "Gibson"
+    KLD = "Kld"
+    LIGATE = "Ligate"

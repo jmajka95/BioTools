@@ -1,18 +1,11 @@
 # Functions supporting reactions using DNA sequences
-from dna import DNA
-from oligo import Oligo
-from bio_exceptions import ReactionError
-from bio_annotation import BioOrientation
-from bio_enums import *
-from bio_utils import find_binding_site, rev_comp, find_re_sites, validate_sites, check_homology
-from bio_alphabet import re_enzymes, re_enzymes_offsets
-import re
+from biotools.dna import DNA
+from biotools.oligo import Oligo
+from biotools.bio_exceptions import ReactionError
+from biotools.bio_annotation import BioOrientation
+from biotools.bio_enums import BioProperty
+from biotools.bio_utils import find_binding_site, rev_comp, find_re_sites, validate_sites, check_homology
 
-# TODO: Would be cool to simulate reactions in graphs similar to what Nirmit did.
-# Probably in a different class that can set up reactions in
-# Probably can just make a compiler class that utilizes some functionality from the CombinatorialCompiler
-# Should put assign_codons() in utils
-# hlper funcs begin with _
 
 def amplify(
     f_primer: list[Oligo], 
@@ -72,7 +65,15 @@ def kld(input: DNA) -> DNA:
         raise ReactionError("Cannot generate plasmids of length shorter than 740!")
     if input.is_circular():
         raise ReactionError("Cannot perform KLD on a circular input!")
-    return DNA(input.seq, input.type, BioProperty.CIRCULAR, input.strandedness, input.annotations, input.parent)
+    return DNA(
+        input.seq, 
+        input.name, 
+        input.type, 
+        BioProperty.CIRCULAR, 
+        input.strandedness, 
+        input.annotations, 
+        input.parent
+    )
 
 def digest(input: DNA, enzymes: list[str], gel_extraction: tuple[int, int] = None) -> DNA | list[DNA]:
     """Digests the input with the provided enzyme(s) and returns all products formed.
@@ -80,9 +81,8 @@ def digest(input: DNA, enzymes: list[str], gel_extraction: tuple[int, int] = Non
     NOTE: Enzymes must be valid keys of bio_alphabet.re_enzymes"""
     sites: dict = find_re_sites(input, *enzymes)
 
-    circular = True if input.circular == BioProperty.CIRCULAR else False
-    if not (tuple_list := validate_sites(sites, len(input), circular)):
-        raise ReactionError("Invalid enzyme parameters detected! Check cut sites do not overlap or cut other sites.")
+    circular: bool = True if input.circular == BioProperty.CIRCULAR else False
+    tuple_list: list[tuple[int, int, int, tuple[int, int], int]] = validate_sites(sites, len(input), circular)
 
     products: list[DNA] = []
     # Generate products based on spans
@@ -208,7 +208,7 @@ def digest(input: DNA, enzymes: list[str], gel_extraction: tuple[int, int] = Non
                     products.append(product)
 
                 else: # Go to end
-                    product = input[span[0] + offset[0]:]
+                    product = input[span[1] - offset[0] - offset[1] :]
                     product.strandedness = BioProperty.CUT
                     if offset[-1] == BioOrientation.BOTTOM:
                         product.offsets = ((0, 0), (offset[1], 0))
@@ -252,7 +252,7 @@ def digest(input: DNA, enzymes: list[str], gel_extraction: tuple[int, int] = Non
 
     return products[0] if len(products) == 1 else products
 
-def ligate(*inputs: DNA, gel_extraction: tuple[int, int] = None) -> DNA | list[DNA]:
+def ligate(inputs: list[DNA], gel_extraction: tuple[int, int] = None) -> DNA | list[DNA]:
     """Ligates the provided inputs together. Will generate self-ligating products if possible."""
     for input in inputs:
         if input.is_circular():
@@ -317,13 +317,18 @@ def ligate(*inputs: DNA, gel_extraction: tuple[int, int] = None) -> DNA | list[D
     
     return final_assemblies[0] if len(final_assemblies) == 1 else final_assemblies
 
-def blunt_ligate(*inputs: DNA, gel_extract: tuple[int, int] = None) -> DNA | list[DNA]:
+def blunt_ligate(inputs: list[DNA], gel_extract: tuple[int, int] = None) -> DNA | list[DNA]:
     """Performs a blunt ligation on the provided products."""
     # Check each input has no overhangs
     # Concatenate all inputs
     raise NotImplementedError
 
-def gibson(*inputs: DNA, min_homology_len: int = 20, max_homology_len: int = 40, gel_extraction: tuple[int, int] = None) -> DNA | list[DNA]:
+def gibson(
+    inputs: list[DNA],
+    min_homology_len: int = 20,
+    max_homology_len: int = 40,
+    gel_extraction: tuple[int, int] = None
+) -> DNA | list[DNA]:
     """Performs a Gibson cloning reaction on one or more products. The order of products does
     not matter, and homology will be determined. This will generate all possible products from the 
     input parts and return either a single product or list of products.
@@ -331,8 +336,13 @@ def gibson(*inputs: DNA, min_homology_len: int = 20, max_homology_len: int = 40,
     if min_homology_len < 20 or max_homology_len < 20:
         raise ValueError("Must check for at least 20 bases of homology between products.")
 
+    if max_homology_len < min_homology_len:
+        raise ValueError("max_homology_len cannot be less than min_homology_len!")
+
     all_parts: list[DNA] = []
     for part in inputs:
+        if len(part) < min_homology_len:
+            raise ReactionError(f"Part {part} is shorter than min_homology_len ({min_homology_len})!")
         if part.is_circular():
             raise ReactionError(f"Unable to use circular products in a Gibson reaction! {part} is circular.")
         if part not in all_parts:  # In case we duplicate parts
@@ -384,7 +394,7 @@ def gibson(*inputs: DNA, min_homology_len: int = 20, max_homology_len: int = 40,
                 final_assemblies.append(final_assembly)
 
     # Gel extraction
-    if gel_extract:
+    if gel_extraction:
         return gel_extract(*final_assemblies, extraction_len_range=gel_extraction)
     
     return final_assemblies[0] if len(final_assemblies) == 1 else final_assemblies
@@ -394,5 +404,6 @@ def gel_extract(*inputs: DNA, extraction_len_range: tuple[int,int]) -> DNA | lis
     extracted_inputs: list[DNA] = [input for input in inputs if (input.length >= extraction_len_range[0] and input.length <= extraction_len_range[1])]
     return extracted_inputs[0] if len(extracted_inputs) == 1 else extracted_inputs
 
-# TODO: End repair reaction?
-# TODO: Anneal reaction? As in, find the overlapping bases and combine, making offsets as needed and make "Cut"
+def anneal_oligos(oligo_1: Oligo, oligo_2: Oligo) -> DNA:
+    """Anneals two oligos together, stitching them at their homology."""
+    raise NotImplementedError

@@ -1,4 +1,5 @@
-# Exceptions file
+"""File defining exceptions to be used during sequence creation and validation, reactions,
+and more."""
 
 class InvalidSequence(Exception):
     """Raised for an invalid DNA sequence"""
@@ -18,4 +19,9 @@ class ReactionError(Exception):
 
 class InvalidPaddingException(Exception):
     """Class representing an exception for a lack of padding for enzymes."""
+    pass
+
+class SimulationError(Exception):
+    """Class representing an error occurring during simulation using
+    a BioReactionGraph."""
     pass

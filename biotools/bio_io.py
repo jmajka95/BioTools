@@ -1,11 +1,8 @@
-from dna import DNA
-from bio_annotation import BioAnnotation
-from bio_enums import BioOrientation, BioProperty
+from biotools.dna import DNA
+from biotools.bio_annotation import BioAnnotation
+from biotools.bio_enums import BioOrientation, BioProperty
 import re
 
-# TODO: Add visualization of stuff?
-# TODO: SQLite database locally saves stuff?
-# TODO: Would be cool to have like Fasta object that save important information saved in .fasta files
 
 class BioFileParser():
     """Class for biological file parsing."""
@@ -18,9 +15,19 @@ class BioFileParser():
     # ):
     #     pass
 
-    def parse_fasta(self, file_path: str) -> list[DNA]:
+    def parse_fasta(self, file_path: str, circular: bool = False) -> DNA | list[DNA]:
         """Parses a .fasta file, saving all sequences as DNA objects.
-        Assumes sequences are double-stranded DNA."""
+        Assumes sequences are double-stranded DNA.
+        
+        Parameters
+        ----------
+        file_path: str
+        
+        circular: bool
+        
+        Returns
+        -------
+        """
         
         # TODO: This assumes that they will be DNA sequences. Any way to infer this? Could also have parameter
         # TODO: Add FileParsingError exception and add as appropriate
@@ -29,6 +36,7 @@ class BioFileParser():
         seq: str
         dna_list: list[DNA] = []
         save: bool = False
+        circ: BioProperty = BioProperty.LINEAR if not circular else BioProperty.CIRCULAR
 
         with open(file_path, "r") as file:
             for line in file:
@@ -45,10 +53,10 @@ class BioFileParser():
                     if (addition != ""):
                         seq += addition
                     else:
-                        dna_list.append(DNA(seq, name))                
+                        dna_list.append(DNA(seq, name, circular=circ))                
                         save = False
             if save:
-                dna_list.append(DNA(seq, name))  
+                dna_list.append(DNA(seq, name, circular=circ))  
                 
         return dna_list
     

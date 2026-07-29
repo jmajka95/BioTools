@@ -1,5 +1,5 @@
 # BioTools
-BioTools is a diverse, lightweight computational toolkit for biology, spanning sequence file conversion and parsing, virtual cloning, and more.
+BioTools is a diverse, lightweight computational toolkit for biology, spanning sequence file conversion and parsing, virtual cloning, and more.\
 **NOTE**: This is **not** a vibe-coded repository.
 
 What can you do with BioTools?
@@ -60,7 +60,7 @@ digest_reaction.simulate()
 # possible combinations of plasmid sequence from the BioPool
 ```
 
-Why use BioTools?\
+Why use BioTools?
 1. BioTools was created with computational biologists in mind. It aims to be lightweight, flexible, and simple.
 2. BioTools is designed to simulate complex, high-throughput cloning. As DNA synthesis costs continue to fall,\
 cheap, large-scale libraries are more attainable than ever. BioTools was built with this style of cloning in mind.

@@ -21,19 +21,35 @@ rna =       RNA(seq="AUGC", name="bar")
 protein =   Protein(seq="HEYYY", name="cześć")
 
 dna.sequence() # To visualize the sequence, 
-               # also works with rna and protein
+               # also works with RNA and Protein
 ```
 
 2. File Parsing
 ```python
 from biotools.bio_io import BioFileParser as BFP
 
-genbank =   BFP().parse_genbank("path/to/file.gb")
+genbank =   BFP().parse_genbank("path/to/genbank.gb")
 # Multiple sequences can be parsed in one Genbank file
 # Circularity is also inferred
-fasta =     BFP().parse_fasta("path/to/file.fa")
+fasta =     BFP().parse_fasta("path/to/fasta.fa", circular=False)
 # Multiple sequences can be read in a file
-# Linearity is assumed
+# Linearity is assumed unless otherwise stated
+```
+
+3. Reaction Simulation
+```python
+from biotools.bio_reactions import digest, ligate
+
+plasmid_1 = BFP().parse_genbank("path/to/genbank")
+plasmid_2 = BFP().parse_genbank("path/to/genbank")
+digest_1 = digest(plasmid_1, ["HindIII", "XbaI"], (500,550))
+digest_2 = digest(plasmid_2, ["HindIII", "XbaI"], (1500,1600))
+# We can digest both plasmids with HindIII and XbaI, and then
+# extract products between 500-550 bp and 1500-1600 bp, inclusive
+
+ligation = ligate(digest_1, digest_2)
+# Cloning has been simulated and confirmed to work before
+# you order parts
 ```
 
 3. Pooled Cloning
@@ -42,9 +58,8 @@ from biotools.bio_reaction_step import BioReactionStep as BRS
 from biotools.bio_annotation import Block
 from biotools.bio_enums import BioOrientation, BioReaction
 from biotools.bio_pool import BioPool
-from biotools.bio_reactions import digest
 
-plasmid = BFP().parse_genbank("path/to/file")
+plasmid = BFP().parse_genbank("path/to/genbank")
 bp = BioPool(BFP().parse_fasta("path/to/library/seqs"))
 b = Block((100,150), "block", BioOrientation.FORWARD, bp)
 # Parse DNA sequences into a pool, then make an annotation

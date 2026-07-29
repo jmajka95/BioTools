@@ -6,19 +6,11 @@ import re
 
 class BioFileParser():
     """Class for biological file parsing."""
-    
-    # TODO: Init needed for any reason?
-    # If ^ isn't needed, then why make a class?
-    # There has to be something to add in init...
-    # def __init__(
-    #     self,
-    # ):
-    #     pass
 
     def parse_fasta(self, file_path: str, circular: bool = False) -> DNA | list[DNA]:
         """Parses a .fasta file, saving all sequences as DNA objects.
         Assumes sequences are double-stranded DNA.
-        
+
         Parameters
         ----------
         file_path: str
@@ -28,7 +20,7 @@ class BioFileParser():
         Returns
         -------
         """
-        
+
         # TODO: This assumes that they will be DNA sequences. Any way to infer this? Could also have parameter
         # TODO: Add FileParsingError exception and add as appropriate
 
@@ -53,26 +45,26 @@ class BioFileParser():
                     if (addition != ""):
                         seq += addition
                     else:
-                        dna_list.append(DNA(seq, name, circular=circ))                
+                        dna_list.append(DNA(seq, name, circular=circ))
                         save = False
             if save:
-                dna_list.append(DNA(seq, name, circular=circ))  
-                
+                dna_list.append(DNA(seq, name, circular=circ))
+
         return dna_list
-    
+
     def parse_genbank(self, file_path: str) -> list[DNA]:
         """Parses a .gbk file, saving the sequence as a DNA object."""
-        
-        sequences: list[DNA] = []
-        annotations: list[BioAnnotation] = []
-        seq: str = ""
-        name: str = ""
-        annot_name: str = ""
-        add_annotations: bool = False
-        add_sequence: bool = False
-        orientation: BioOrientation = BioOrientation.FORWARD
-        circular: BioProperty = BioProperty.LINEAR
-        span: tuple[int, int] = (0, 0)
+
+        sequences:          list[DNA] = []
+        annotations:        list[BioAnnotation] = []
+        seq:                str = ""
+        name:               str = ""
+        annot_name:         str = ""
+        add_annotations:    bool = False
+        add_sequence:       bool = False
+        orientation:        BioOrientation = BioOrientation.FORWARD
+        circular:           BioProperty = BioProperty.LINEAR
+        span:               tuple[int, int] = (0, 0)
 
         # Multiple sequences can be separated by //
         with open(file_path, "r") as file:
@@ -111,7 +103,7 @@ class BioFileParser():
                             m = re.search(r"\s*/label=\"(.*)\"", line)
                             if m:
                                 annot_name = m.group(1)
-                            
+
                             annotations.append(BioAnnotation(span, annot_name, orientation))
                             annot_name = ""
                             span = (0,0)

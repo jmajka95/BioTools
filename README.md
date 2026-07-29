@@ -4,9 +4,9 @@ BioTools is a diverse, lightweight computational toolkit for biology, spanning s
 **NOTE**: This is **not** a vibe-coded repository.
 
 What can you do with BioTools?
-1. Represent DNA, RNA, and Proteins.
-2. Parse FASTA and Genbank files.
-3. Virtually simulate reactions and high-throughput cloning workflows.
+1. Represent DNA, RNA, and Proteins
+2. Parse FASTA and Genbank files
+3. Virtually simulate reactions and high-throughput cloning workflows
 
 Examples:
 1. Visualization

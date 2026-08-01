@@ -48,8 +48,8 @@ digest_2 = digest(plasmid_2, ["HindIII", "XbaI"], (1500,1600))
 # extract products between 500-550 bp and 1500-1600 bp, inclusive
 
 ligation = ligate(digest_1, digest_2)
-# Cloning has been simulated and confirmed to work before
-# you order parts
+# Cloning has been simulated and confirmed to work if the reaction
+# returns products before you order expensive parts
 ```
 
 3. Pooled Cloning

@@ -84,7 +84,7 @@ class BioFileParser():
                             name = m.group(1)
                         if "circular" in line:
                             circular = BioProperty.CIRCULAR
-                    elif line.startswith("FEATURES"): # Annotations creation workflow
+                    elif line.startswith("FEATURES"):  # Annotations creation workflow
                         add_annotations = True
                     elif line.startswith("ORIGIN"):
                         add_annotations = False
@@ -93,12 +93,12 @@ class BioFileParser():
                         if "complement" in line:
                             m = re.search(r"complement\((\d+)\.\.(\d+)\)", line)
                             if m:
-                                span = int(m.group(1)), int(m.group(2))
+                                span = int(m.group(1)) - 1, int(m.group(2)) - 1  # Correcting for indexing convention
                             orientation = BioOrientation.REVERSE
                         elif ".." in line:
                             m = re.search(r"\s*(\d+)\.\.(\d+)", line)
                             if m:
-                                span = int(m.group(1)), int(m.group(2))
+                                span = int(m.group(1)) - 1, int(m.group(2)) - 1
                         if "label" in line:
                             m = re.search(r"\s*/label=\"(.*)\"", line)
                             if m:

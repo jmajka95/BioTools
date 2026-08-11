@@ -108,6 +108,7 @@ digest_step = BRS(
 # outputs from the PCR step will become the new inputs
 
 reaction_graph = BRG((pcr_step, digest_step))
+# Each tuple is an edge. Multiple edges can be added
 reaction_graph.show_graph()
 # This will produce a graphviz representation of the graph
 

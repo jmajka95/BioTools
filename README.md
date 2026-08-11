@@ -107,7 +107,7 @@ digest_step = BRS(
 # This digest step happens after PCR. "input" is None because the 
 # outputs from the PCR step will become the new inputs
 
-reaction_graph = BRG((pcr_step, digest_step))
+reaction_graph = BRG((pcr_step, digest_step), name="test_simulation")
 # Each tuple is an edge. Multiple edges can be added
 reaction_graph.show_graph()
 # This will produce a graphviz representation of the graph

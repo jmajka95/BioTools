@@ -124,5 +124,5 @@ Why use BioTools?
 1. BioTools was created with computational biologists in mind. It aims to be as lightweight, flexible, and simple as possible.
 2. BioTools is designed to simulate complex, high-throughput cloning. As DNA synthesis costs continue to fall,\
 cheap, large-scale libraries are more attainable than ever. BioTools was built with this style of cloning in mind.
-3. BioTools contains comprehensive tutorials in Python notebooks directly within the repository. You should never\
+3. BioTools contains comprehensive tutorials in Python notebooks directly within the repository. You should never
 have to dig through complicated, boring manuals.

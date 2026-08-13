@@ -42,8 +42,8 @@ from biotools.bio_reactions import digest, ligate
 
 plasmid_1 = BFP().parse_genbank("path/to/genbank")
 plasmid_2 = BFP().parse_genbank("path/to/genbank")
-digest_1 =  digest(plasmid_1, ["HindIII", "XbaI"], (500,550))
-digest_2 =  digest(plasmid_2, ["HindIII", "XbaI"], (1500,1600))
+digest_1 =  digest(plasmid_1, ["HindIII", "XbaI"], (500, 550))
+digest_2 =  digest(plasmid_2, ["HindIII", "XbaI"], (1500, 1600))
 # We can digest both plasmids with HindIII and XbaI, and then
 # extract products between 500-550 bp and 1500-1600 bp, inclusive
 
@@ -61,7 +61,7 @@ from biotools.bio_pool import BioPool
 
 plasmid =   BFP().parse_genbank("path/to/genbank")
 bp =        BioPool(BFP().parse_fasta("path/to/library/seqs"))
-b =         Block((100,150), "block", BioOrientation.FORWARD, bp)
+b =         Block((100, 150), "block", BioOrientation.FORWARD, bp)
 # Parse DNA sequences into a pool, then make an annotation
 plasmid.add_annotations(b)
 # Adds the Block from slice 100 to 150 of plasmid

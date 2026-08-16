@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from biotools.bio_reactions import (
-    amplify, digest, ligate, gibson, anneal_oligos, kld
+    amplify, digest, ligate, gibson, anneal_oligos, kld,
+    golden_gate
 )
 from biotools.bio_enums import BioReaction
 from biotools.bio_exceptions import SimulationError
@@ -18,6 +19,7 @@ func_map: dict[BioReaction, Callable] = {
     BioReaction.ANNEAL:     anneal_oligos,
     BioReaction.DIGEST:     digest,
     BioReaction.GIBSON:     gibson,
+    BioReaction.GG:         golden_gate,
     BioReaction.KLD:        kld,
     BioReaction.LIGATE:     ligate
 }
@@ -27,29 +29,31 @@ class BioReactionStep:
     BioReactionSteps allow for multiprocessing of products with pools of sequences.
     BioReactionSteps will identify BioPools within the inputs and fork processes
     for each combination of pool.
-    
+
     Parameters
     ----------
     type: BioReaction
         The type of reaction to simulate. One of the following:
-            - Amplify   (PCR Reactions)
-            - Anneal    (Oligo Annealing)
-            - Digest    (Restriction Digest Reactions)
-            - Gibson    (Gibson Assembly Reactions)
-            - KLD       (Kinase, Ligase, DpnI Reactions)
-            - Ligate    (Ligation Reactions)
-    kwargs: dict
-        A dictionary of the keyword arguments used for the specific reaction
+            - Amplify       (PCR Reactions)
+            - Anneal        (Oligo Annealing)
+            - Digest        (Restriction Digest Reactions)
+            - Gibson        (Gibson Assembly Reactions)
+            - Golden Gate   (Golden Gate Assembly Reactions)
+            - Input         (Individual Inputs)
+            - KLD           (Kinase, Ligase, DpnI Reactions)
+            - Ligate        (Ligation Reactions)
     name: str
         An identifying name for BioReactionStep.
         NOTE: In BioReactionGraphs, each Step must have a unique name
+    kwargs: dict | DNA | None (Default: None)
+        A dictionary of the keyword arguments used for the specific reaction
     """
 
     def __init__(
         self,
         type: BioReaction,
         name: str,
-        kwargs: dict[Any, Any] | None = None
+        kwargs: dict[Any, Any] | DNA | None = None
     ):
         """Default constructor."""
         self.type = type
@@ -75,14 +79,14 @@ class BioReactionStep:
         return f"{self.name}\n" \
                 "-------\n" \
                f"KWARGS: {self._print_kwargs()}"
-    
+
     def __hash__(self) -> int:
         return int(sha256(self.__repr__().encode()).hexdigest(), 16)
 
     def simulate(self, kwargs: dict[Any, Any] | None = None) -> DNA | list[Any]:
         """Simulates the reaction of self.type with self.kwargs.
         If there are pools present, will generate all combinations of inputs.
-        
+
         Parameters
         ----------
         kwargs: dict[Any, Any] (Optional)
@@ -92,6 +96,9 @@ class BioReactionStep:
         -------
         The product of the reaction, run as specified by self.kwargs or by the provided arguments
         """
+        if self.type == BioReaction.INPUT:  # Input type returns its input
+            return self.kwargs["input"]
+
         kargs: dict[str, Any] = {}
         if kwargs: kargs = kwargs
         else: kargs = self.kwargs
@@ -149,6 +156,19 @@ class BioReactionStep:
                     input_combos = list(product(*input_args))
                     arg_combos = [
                         (input_combos[i], kargs["min_homology_len"], kargs["max_homology_len"], kargs["gel_extraction"]) \
+                        for i in range(len(input_combos))
+                    ]
+                case BioReaction.GG:
+                    input_args: list[DNA | list[DNA]] = []
+                    for input in kargs["inputs"]:
+                        if input.has_pool():
+                            input_args.append(input.get_pools())
+                        else:
+                            input_args.append([input])
+
+                    input_combos = list(product(*input_args))
+                    arg_combos = [
+                        (input_combos[i], kargs["enzyme"], kargs["gel_extraction"]) \
                         for i in range(len(input_combos)) 
                     ]
                 case BioReaction.KLD:
@@ -167,7 +187,7 @@ class BioReactionStep:
 
                     input_combos = list(product(*input_args))
                     arg_combos = [
-                        (input_combos[i], kargs["gel_extraction"]) \
+                        (input_combos[i], kargs["gel_extraction"], kargs["blunt"], kargs["allow_linear"]) \
                         for i in range(len(input_combos)) 
                     ]
 
@@ -205,7 +225,22 @@ class BioReactionStep:
                     input_combos = list(product(*input_args))
                     arg_combos = [
                         (input_combos[i], kargs["min_homology_len"], kargs["max_homology_len"], kargs["gel_extraction"]) \
-                        for i in range(len(input_combos)) 
+                        for i in range(len(input_combos))
+                    ]
+            case BioReaction.GG:
+                input_args: list[DNA | list[DNA]] = []
+                has_list: bool = False
+                for input in kargs["inputs"]:
+                    if isinstance(input, list):
+                        input_args.append(input)
+                        has_list = True
+                    else:
+                        input_args.append([input])
+                if has_list:
+                    input_combos = list(product(*input_args))
+                    arg_combos = [
+                        (input_combos[i], kargs["enzyme"], kargs["gel_extraction"]) \
+                        for i in range(len(input_combos))
                     ]
             case BioReaction.KLD:
                 if isinstance(kargs["input"], list):
@@ -227,15 +262,14 @@ class BioReactionStep:
                 if has_list:
                     input_combos = list(product(*input_args))
                     arg_combos = [
-                        (input_combos[i], kargs["gel_extraction"]) \
+                        (input_combos[i], kargs["gel_extraction"], kargs["blunt"], kargs["allow_linear"]) \
                         for i in range(len(input_combos)) 
                     ]
 
         if arg_combos:  # Multiprocessing workflow
             with multiprocessing.Pool(processes=os.cpu_count()-1) as pool:
                 return pool.starmap(func_map[self.type], arg_combos)
-
-        # We have no input lists where they usully aren't and no pools
+        # We have no input lists where they usually aren't and no pools
         return func_map[self.type](**kargs)
 
     def _print_kwargs(self) -> str:
@@ -247,7 +281,7 @@ class BioReactionStep:
                 kwargs += f"         \"{bioreaction}\": {func}\n"
         kwargs += "        }\n"
         return kwargs
-    
+
     def _check_pools(self) -> bool:
         """Returns True if pools exist in any input, False otherwise."""
         if not self.kwargs:
@@ -260,12 +294,13 @@ class BioReactionStep:
         elif self.type == BioReaction.DIGEST or self.type == BioReaction.KLD:
             if not self.kwargs["input"]: return False
             return self.kwargs["input"].has_pool()
-        elif self.type == BioReaction.GIBSON:
+        elif self.type == BioReaction.INPUT:
+            return self.kwargs["input"].has_pool()
+        elif self.type == BioReaction.GIBSON or self.type == BioReaction.GG:
             if not self.kwargs["inputs"]: return False
             for input in self.kwargs["inputs"]:
                 if input.has_pool():
                     return True
-                return False
         elif self.type == BioReaction.LIGATE:
             if not self.kwargs["inputs"]: return False
             for input in self.kwargs["inputs"]:

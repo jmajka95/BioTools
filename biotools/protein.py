@@ -77,7 +77,7 @@ class Protein:
         return len(self.seq)
 
     def __repr__(self):
-        return f"{self.name} | {self.type.value} | [{self.length} amino acid(s)] | [{len(self.annotations)} Annotation(s)] |"
+        return f"{{ {self.name} | {self.type.value} | [{self.length} amino acid(s)] | [{len(self.annotations)} Annotation(s)] }}"
 
     def __getitem__(self, index):
         annotations: list[BioAnnotation] = []
@@ -301,8 +301,8 @@ class Protein:
     def __eq__(self, other):
         if other is self:
             return True
-        return (self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations) == \
-               (other.seq, other.name, other.type, other.circular, other.strandedness, other.annotations)
+        return (self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations, self.parent) == \
+               (other.seq, other.name, other.type, other.circular, other.strandedness, other.annotations, self.parent)
 
     def __len__(self):
         return self.length

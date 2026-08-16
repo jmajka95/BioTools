@@ -1,4 +1,7 @@
-"""File defining utility functions to be used for simulation.
+"""bio_utils.py
+
+File defining utility functions to be used for a variety of
+computational biology needs.
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ import re
 from re import Match
 import requests # type: ignore
 import json
+import pandas as pd
 
 def rev_comp(seq: str, is_dna: bool = True) -> str:
     """Generates the reverse complement of an input."""
@@ -72,7 +76,6 @@ def validate_annotations(seq: DNA, annotations: list[BioAnnotation]) -> bool:
         if annot.span[0] < 0 or annot.span[1] < 0:
             raise InvalidInstantiationException(f"Invalid annotation provided! One span is less than zero!")
         elif annot.span[0] > len(seq) or annot.span[1] > seq.length:
-            print(annot.span) # DEBUG
             raise InvalidInstantiationException(f"Invalid annotation provided! One span is higher than the sequence length!")
     return True
 
@@ -84,6 +87,8 @@ def transcribe(dna: DNA) -> RNA:
 def translate(rna: RNA) -> Protein:
     """Translates RNA into protein."""
     from biotools.protein import Protein
+    if not isinstance(rna, RNA):
+        raise ValueError(f"Must use RNA as input! Provided {type(rna)}.")
 
     if rna.length % 3 != 0:
         raise Exception("Cannot translate RNA sequence that contains a partial codon.")
@@ -109,9 +114,9 @@ def generate_random_sequence(
     n_seqs: int = 1,
     enzyme_blacklist: list[str] | None = None,
     kwargs: dict[str, Any] = {}
-) -> DNA | list[DNA] | Protein | RNA | list[RNA] | list[Protein]:
+) -> DNA | list[DNA] | RNA | list[RNA] | Protein | list[Protein]:
     """Generates a random sequence of either amino acids or nucleotides of a specified length.
-    
+
     Parameters
     ----------
     length: int | tuple[int, int]
@@ -283,6 +288,7 @@ def validate_sites(
     """Helper function for digest().
     Validates whether or not a cut site(s) exists and can be used.
     Returns a dictionary mapping the cut site tuples with their respective enzyme."""
+
     spans: list[tuple[int, int]] = []
     tuple_list: list[tuple[tuple[int,int,BioOrientation], str]] = []
     enzymes = list(site_dict.keys())
@@ -303,7 +309,7 @@ def validate_sites(
                             if span[1] >= seq_len - padding:
                                 raise ReactionError(f"Must have at least {padding} bases for digestion to work if input is linear!")
                 if orientation == BioOrientation.REVERSE:
-                    span = (seq_len - span[1], seq_len - span[0]) # Convert to forward orientation
+                    span = (seq_len - span[1], seq_len - span[0])  # Convert to forward orientation
                 spans.append(span)
 
                 # Generate list for ( (int, int, int, BioOrientation) , (int, int, str, BioOrientation) )
@@ -313,41 +319,49 @@ def validate_sites(
                         tuple_list.append((tup, span, val, orientation))
                 else:
                     tuple_list.append((RE_ENZYMES_OFFSETS[val], span, val, orientation))
-                                       
+
     if not spans: 
         raise ReactionError("No valid spans found!")
-    
+
     seen: set[tuple[tuple[int,int,BioOrientation], str]] = set()
-    tuple_list = [tup for tup in tuple_list if not (tup in seen or seen.add(tup))] # Clean up repeats
+    tuple_list = [tup for tup in tuple_list if not (tup in seen or seen.add(tup))]  # Clean up repeats
 
     cut_spans: list[tuple[int, int]] = []
     cuts_tuple_list: tuple[int, int, int, tuple[int, int], int] = []
-    # Validate span overlaps
-    for tup_1 in tuple_list:
-        for tup_2 in tuple_list:
-            if tup_1 != tup_2:
-                # Get recognition site tuples
-                site_1 = tup_1[1]
-                site_2 = tup_2[1]
-                if tup_1[-1] == BioOrientation.FORWARD:
-                    e1_cut_span = (site_1[0] + tup_1[0][0], tup_1[0][0] + tup_1[0][0] + tup_1[0][1])
-                else: # Must reverse from span[1] because it's 5' bottom strand
-                    e1_cut_span = (site_1[1] - tup_1[0][0], site_1[1] - tup_1[0][0] - tup_1[0][1])
-                cuts_tuple_list.append((tup_1[0], tup_1[1], tup_1[2], e1_cut_span, tup_1[3]))
-                cut_spans.append(e1_cut_span)
-    
-                if tup_2[-1] == BioOrientation.FORWARD:
-                    e2_cut_span = (site_2[0] + tup_2[0][0], site_2[0] + tup_2[0][0] + tup_2[0][1])
-                else:
-                    e2_cut_span = (site_2[1] - tup_2[0][0], site_2[1] - tup_2[0][0] - tup_2[0][1])
+    if len(tuple_list) == 1:  # Only one site exists
+        tup_1 = tuple_list[0]
+        site_1 = tup_1[1]
+        if tup_1[-1] == BioOrientation.FORWARD:
+            e1_cut_span = (site_1[0] + tup_1[0][0], tup_1[0][0] + tup_1[0][0] + tup_1[0][1])
+        else:  # Must reverse from span[1] because it's 5' bottom strand
+            e1_cut_span = (site_1[1] - tup_1[0][0], site_1[1] - tup_1[0][0] - tup_1[0][1])
+        return [(tup_1[0], tup_1[1], tup_1[2], e1_cut_span, tup_1[3])]
+    else:  # Validate span overlaps if we have multiple enzymes / sites
+        for tup_1 in tuple_list:
+            for tup_2 in tuple_list:
+                if tup_1 != tup_2:
+                    # Get recognition site tuples
+                    site_1 = tup_1[1]
+                    site_2 = tup_2[1]
+                    if tup_1[-1] == BioOrientation.FORWARD:
+                        e1_cut_span = (site_1[0] + tup_1[0][0], tup_1[0][0] + tup_1[0][0] + tup_1[0][1])
+                    else:  # Must reverse from span[1] because it's 5' bottom strand
+                        e1_cut_span = (site_1[1] - tup_1[0][0], site_1[1] - tup_1[0][0] - tup_1[0][1])
+                    cuts_tuple_list.append((tup_1[0], tup_1[1], tup_1[2], e1_cut_span, tup_1[3]))
+                    cut_spans.append(e1_cut_span)
+        
+                    if tup_2[-1] == BioOrientation.FORWARD:  # Make second enzymes cut span to check for overlaps
+                        e2_cut_span = (site_2[0] + tup_2[0][0], site_2[0] + tup_2[0][0] + tup_2[0][1])
+                    else:
+                        e2_cut_span = (site_2[1] - tup_2[0][0], site_2[1] - tup_2[0][0] - tup_2[0][1])
 
-                # Check for cutting the re site
-                if (e1_cut_span[0] > site_2[0] and e1_cut_span[0] < site_2[1]) or (e1_cut_span[1] > site_2[0] and e1_cut_span[1] < site_2[1]) \
-                or (e1_cut_span[0] < site_2[0] and e1_cut_span[1] > site_2[1]):
-                    raise ReactionError("Enzyme cuts re site!")
-                # Check for cutting the cut site
-                if (e1_cut_span[0] > e2_cut_span[0] and e1_cut_span[0] < e2_cut_span[1]) or (e1_cut_span[1] > e2_cut_span[0] and e1_cut_span[1] < e2_cut_span[1]):
-                    raise ReactionError("Enzyme cuts cut site!")
+                    # Check for cutting the re site
+                    if (e1_cut_span[0] > site_2[0] and e1_cut_span[0] < site_2[1]) or (e1_cut_span[1] > site_2[0] and e1_cut_span[1] < site_2[1]) \
+                    or (e1_cut_span[0] < site_2[0] and e1_cut_span[1] > site_2[1]):
+                        raise ReactionError("Enzyme cuts re site!")
+                    # Check for cutting the cut site
+                    if (e1_cut_span[0] > e2_cut_span[0] and e1_cut_span[0] < e2_cut_span[1]) or (e1_cut_span[1] > e2_cut_span[0] and e1_cut_span[1] < e2_cut_span[1]):
+                        raise ReactionError("Enzyme cuts cut site!")
                 
     # Sort based on cut tuple
     sorted_tuple_list: list[tuple[int, int, int, tuple[int, int], int]] = []
@@ -379,7 +393,24 @@ def get_annealing_temp(
 ) -> int | list[int]:
     """Generates an annealing temperature of the provided primers. This uses NEB's Tm API.
     More information can be found at https://tmapi.neb.com/
-    NOTE: prod_code has been defaulted to that corresponding to Q5 2X Hot Start."""
+    NOTE: prod_code has been defaulted to that corresponding to Q5 2X Hot Start.
+    
+    Parameters
+    ----------
+    primer_1: list[Oligo]
+        A list of Oligos of the first primer in the pair
+    primer_2: list[Oligo]
+        A list of Oligos of the second primer in the pair
+    conc: float (Default: 0.5)
+        A float of the primer concentration in nanomoles
+    prod_code: str (Default: "q5hs-1")
+        The production code of the NEB API.
+
+    Returns
+    -------
+    An integer of the annealing temperature if one pair of primers is passed in, else
+    a list of annealing temperatures for all primer pairs provided.
+    """
     
     url = 'https://tmapi.neb.com/tm/batch'
     primer_pairs = [(p1.seq, p2.seq) for p1, p2 in zip(primer_1, primer_2)]
@@ -406,4 +437,108 @@ def align_sequences(seq: str, ref: str) -> str:
     """Aligns two sequences together using the X format."""
     raise NotImplementedError
 
-# TODO: Melting temp (NEB calculator, but also allow for Taq annealing etc.)
+def to_dataframe(
+    *input: DNA | RNA | Protein,
+    name: bool = False,
+    label: bool = False
+) -> pd.DataFrame:
+    """Converts one or many BioMolecules into a pandas DataFrame
+    NOTE: Annotations will be lost from this conversion!
+    
+    Parameters
+    ----------
+    input: DNA | RNA | Protein
+        One or many of DNA, RNA, or Protein
+    name: bool (Default: False)
+        Whether or not to include a name column in the new dataframe
+    label: bool (Default: False)
+        If True, generates a column with the type
+
+    Returns
+    -------
+    A pandas Dataframe with column "sequence" of each sequence. If
+    `label` is True, also contains a column of the type of BioMolecule.
+    If name is True, also contains a name column
+    """
+    return_dict: dict[str, Any] = {}
+    seqs: list[str] = []
+    seq_types: list[str] = []
+    names: list[str] = []
+    for inp in input:
+        seqs.append(inp.seq)
+        if label:
+            seq_types.append(type(inp).__name__)
+        if name:
+            names.append(inp.name)
+    return_dict = {"sequence": seqs, "name": names, "type": seq_types}
+    if not seq_types:
+        del return_dict["type"]
+    if not name:
+        del return_dict["name"]
+
+    return pd.DataFrame(return_dict)
+
+def from_dataframe(
+    df: pd.DataFrame,
+    seq_col: str = "sequence",
+    name_col: str | None = None,
+    bio_type: BioMolecule | None = None
+) -> DNA | list[DNA] | RNA | list[RNA] | Protein | list[Protein] | list[Any]:
+    """Generates BioMolecules based either on inferring the type (DNA, RNA,
+    or Protein), or explicitly interpreting based on `type`
+
+    Parameters
+    ----------
+    df: pd.DataFrame
+        The dataframe from which to extract BioMolecules
+    seq_col: str (Default: "sequence")
+        The name of the column containing the sequences to
+        generate
+    name_col: str (Default: None)
+        The name of the column containing the names of
+        sequences
+    bio_type: BioMolecule | None (Default: None)
+        If infer is False, a type of BioMolecule to convert
+        all sequences to
+
+    Returns
+    -------
+    DNA, RNA, Protein, or lists of one or a combination of any of them
+
+    Raises
+    ------
+    `ValueError` if bio_type is not a valid BioMolecule
+    """
+    from biotools.dna import DNA
+    from biotools.rna import RNA
+    from biotools.protein import Protein
+    from biotools.oligo import Oligo
+
+    # Conversion dict for instantiation
+    constructors = {
+        "DNA":        DNA,
+        "RNA":        RNA,
+        "Protein":    Protein,
+        "Oligo":      Oligo,
+    }
+
+    if bio_type:
+        if bio_type not in list(constructors.values()):
+            raise ValueError(f"Must provide a valid bio_type from: {list(constructors.values())}")
+
+    return_seqs: list[Any] = []
+    if name_col:
+        names: list[str] = df[name_col].tolist()
+    for i, seq in enumerate(df[seq_col]):
+        name: str = names[i] if name_col else ""
+        if not bio_type:
+            if all(c in NTs for c in seq):  # DNA
+                return_seqs.append(DNA(seq=seq, name=name))
+            elif all(c in AAs for c in seq):  # Protein
+                return_seqs.append(Protein(seq=seq, name=name))
+            else:  # RNA
+                return_seqs.append(RNA(seq=seq, name=name))
+        else:
+            return_seqs.append(bio_type(seq=seq, name=name))
+    
+    return return_seqs[0] if len(return_seqs) == 1 else return_seqs

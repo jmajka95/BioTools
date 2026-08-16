@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from biotools.dna import DNA
 
+from hashlib import sha256
+import json
 from biotools.bio_enums import BioOrientation
 from biotools.bio_exceptions import InvalidInstantiationException
 from biotools.bio_pool import BioPool
@@ -46,35 +48,38 @@ class BioAnnotation():
         if orientation not in BioOrientation:
             raise InvalidInstantiationException("Must provide a valid BioOrientation!")
         self.orientation = orientation
+        self.length = (self.span[1] + 1) - self.span[0]
 
     def __repr__(self):
         """Self is represented as name, span, and length."""
         if self.orientation == BioOrientation.FORWARD:
-            return f">>> Annotation | {self.name} | [Span: {self.span}] | [Length: {self.span[1] - self.span[0]}] >>>"
+            return f">>> Annotation | {self.name} | [Span: {self.span}] | [Length: {self.length}] >>>"
         else:
-            return f"<<< Annotation | {self.name} | [Span: {self.span}] | [Length: {self.span[1] - self.span[0]}] <<<"
+            return f"<<< Annotation | {self.name} | [Span: {self.span}] | [Length: {self.length}] <<<"
 
     def __eq__(self, other: BioAnnotation) -> bool:
         """Two BioAnnotations are equal if every field is equal."""
         return (self.span, self.name, self.orientation) == \
                (other.span, other.name, other.orientation)
-    
+
     def __leq__(self, other: BioAnnotation) -> bool:
         return self.span[0] <= other.span[0]
-    
+
     def __lt__(self, other: BioAnnotation) -> bool:
         return self.span[0] < other.span[0]
-    
+
     def __hash__(self) -> int:
         """Hashes are calculated by hashing the annotation's name, span, and orientation."""
-        return hash(self.name) + hash(self.span) + hash(self.orientation)
+        return int(sha256(self.name.encode()).hexdigest(), 16) + \
+               int(sha256(json.dumps(self.span).encode("utf-8")).hexdigest(), 16) + \
+               int(sha256(json.dumps(self.orientation.name).encode("utf-8")).hexdigest(), 16)
     
     def copy(self) -> BioAnnotation:
         """Returns a copy of self"""
         return BioAnnotation(self.span, self.name, self.orientation)
 
 class Block():
-    """Annotation class representing a Pool of sequences..
+    """Annotation class representing a Pool of sequences.
     
     Parameters
     ----------
@@ -87,7 +92,7 @@ class Block():
     pool: BioPool
         THE
     """
-    
+
     def __init__(
         self,
         span: tuple[int, int],
@@ -100,42 +105,43 @@ class Block():
         self.name = name 
         self.orientation = orientation
         self.pool = pool
+        self.length = (self.span[1] + 1) - self.span[0]
 
     def __repr__(self):
         if self.orientation == BioOrientation.FORWARD:
-            return f">>> Block | {self.name} | [Span: {self.span}] | Length: {self.span[1] - self.span[0]} | [{self.pool.length} Sequence(s)] >>>"
+            return f">>> Block | {self.name} | [Span: {self.span}] | Length: {self.length} | [{self.pool.length} Sequence(s)] >>>"
         else:
-            return f"<<< Block | {self.name} | [Span: {self.span}] | Length: {self.span[1] - self.span[0]} | [{self.pool.length} Sequence(s)] <<<"
-        
+            return f"<<< Block | {self.name} | [Span: {self.span}] | Length: {self.length} | [{self.pool.length} Sequence(s)] <<<"
+
     def __eq__(self, other: BioAnnotation) -> bool:
         """Two BioAnnotations are equal if every field is equal."""
         return (self.span, self.name, self.orientation, self.pool) == \
                (other.span, other.name, other.orientation, other.pool)
-    
+
     def __leq__(self, other: BioAnnotation) -> bool:
         return self.span[0] <= other.span[0]
-    
+
     def __lt__(self, other: BioAnnotation) -> bool:
         return self.span[0] < other.span[0]
-    
+
     def __hash__(self) -> int:
         """Hashes are calculated by hashing the annotation's name, span, and orientation."""
         seq_hash: int = 0
         for seq in self.pool.seqs:
             seq_hash += hash(seq)
         return seq_hash + hash(self.name) + hash(self.span) + hash(self.orientation)
-    
+
     def __len__(self) -> int:
         return self.span[1] - self.span[0]
-    
+
     def print_pool(self, print_seq: bool = False) -> None:
         """Prints the sequences in self.pool
-        
+
         Parameters
         ----------
         print_seq: bool
             Whether or not to print the sequence instead of the representation of the pool
-            
+
         Returns
         -------
         None
@@ -156,7 +162,7 @@ def reverse_annotations(
     annotations: list[BioAnnotation], length: int, rev_comp: bool = False
 ) -> list[BioAnnotation]:
     """Reverses the provided annotations based on the length of the input sequence.
-    
+
     Parameters
     ----------
     annotations: list[BioAnnotation]

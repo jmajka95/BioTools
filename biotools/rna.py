@@ -92,11 +92,11 @@ class RNA:
 
     def __repr__(self):
         if self.circular == BioProperty.CIRCULAR: 
-            return f"{self.name} | {self.type.value} | [{self.length} bp] | [{len(self.annotations)} Annotation(s)] | O"
+            return f"{{ {self.name} | {self.type.value} | [{self.length} bp] | [{len(self.annotations)} Annotation(s)] | O }}"
         elif self.strandedness == BioProperty.DOUBLE_STRANDED:
-            return f"{self.name} | {self.type.value} | [{self.length} bp] | [{len(self.annotations)} Annotation(s)] | ==>"
+            return f"{{ {self.name} | {self.type.value} | [{self.length} bp] | [{len(self.annotations)} Annotation(s)] | ==> }}"
         else:
-            return f"{self.name} | {self.type.value} | [{self.length} bp] | [{len(self.annotations)} Annotation(s)] | -->"
+            return f"{{ {self.name} | {self.type.value} | [{self.length} bp] | [{len(self.annotations)} Annotation(s)] | --> }}"
 
     def __getitem__(self, index):
         annotations: list[BioAnnotation] = []
@@ -320,8 +320,8 @@ class RNA:
     def __eq__(self, other):
         if other is self:
             return True
-        return (self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations) == \
-               (other.seq, other.name, other.type, other.circular, other.strandedness, other.annotations)
+        return (self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations, self.parent) == \
+               (other.seq, other.name, other.type, other.circular, other.strandedness, other.annotations, self.parent)
     
     def __add__(self, other):
         """Generates a new RNA molecule just taking the sequence. This works on linear and circular DNA."""
@@ -349,7 +349,8 @@ class RNA:
 
     def copy(self) -> RNA:
         """Returns a copy of the RNA sequence."""
-        return RNA(self.seq, self.name, self.type, self.circular, self.strandedness)
+        return RNA(self.seq, self.name, self.type, self.circular, \
+                   self.strandedness, self.annotations, self.parent)
     
     def rev_comp(self) -> RNA:
         """Returns an RNA copy of the reverse complement of the sequence."""

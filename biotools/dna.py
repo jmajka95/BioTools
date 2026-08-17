@@ -762,9 +762,9 @@ class DNA():
                 reprs.append(f"<<<{annot.name} ({length} bp)<<<")
 
         if not self.is_circular():
-            print(f"| {" --- ".join([r for r in reprs])} | ==>")
+            print(f"| {' --- '.join([r for r in reprs])} | ==>")
         else:
-            print(f"| {" --- ".join([r for r in reprs])} | O")
+            print(f"| {' --- '.join([r for r in reprs])} | O")
 
     def reindex(self, index: int | str, inplace: bool = True) -> DNA | None:
         """Re-indexes the sequence so that index becomes index 0.

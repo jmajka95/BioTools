@@ -427,9 +427,9 @@ class RNA:
                 reprs.append(f"<<<{annot.name} ({length} bp)<<<")
 
         if self.circular == BioProperty.LINEAR:
-            print(f"| {" --- ".join([r for r in reprs])} | ==>")
+            print(f"| {' --- '.join([r for r in reprs])} | ==>")
         else:
-            print(f"| {" --- ".join([r for r in reprs])} | O")
+            print(f"| {' --- '.join([r for r in reprs])} | O")
 
     def reindex(self, index: int) -> None:
         """Re-indexes the sequence so that index becomes index 0."""

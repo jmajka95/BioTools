@@ -80,6 +80,7 @@ class BioReactionGraph:
         values: list[Any] = list(self.graph_dict.values())
         all_values: list[Any] = [v for val in values for v in val]
         step_dict = copy.deepcopy(self.step_dict)  # Copy to avoid issues running simulate() many times
+
         if steps:  # Simulate steps if provided
             for step in steps:
                 if step not in keys and step not in all_values:  # Check the value(s) of each set
@@ -104,7 +105,7 @@ class BioReactionGraph:
             while reaction_queue:
                 curr_step = reaction_queue.popleft()
                 try:
-                    if curr_step in initialization_list:  # Simulate every node w/ no predecessor
+                    if curr_step in initialization_list:  # Simulate no parent nodes without kwargs
                         output = curr_step.simulate()
                     else:
                         output = curr_step.simulate(kwargs=step_dict[curr_step])
@@ -114,7 +115,7 @@ class BioReactionGraph:
                     self.graph.node(curr_step.name, fillcolor="#90EE90", style="filled")
                 for step in self.graph_dict[curr_step]:
                     if step not in reaction_queue:
-                        reaction_queue.append(step)  # step is child, so we can just check/extend their list
+                        reaction_queue.append(step)
                     if step_dict[step]:  # Add to the input
                         step_dict[step] = self._format_input(step, output, step_dict[step])
                     else:  # Create the input

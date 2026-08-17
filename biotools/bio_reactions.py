@@ -377,17 +377,13 @@ def ligate(
         if not input.is_cut():
             raise ReactionError("Cannot ligate uncut input!")
 
-    all_parts: list[DNA] = []
-    for part in inputs:
-        if part not in all_parts:  # In case we duplicate parts
-            all_parts.append(part)
-    all_parts = sorted(all_parts)  # Sort for deterministic fragment generation
+    all_parts: list[DNA] = sorted(list(set(inputs)))  # Sort for deterministic fragment generation, remove dups
 
     parts_dict: dict[DNA, list[tuple[DNA, int]]] = {}
     for part in all_parts:
         for p in all_parts:
             if part not in parts_dict:
-                parts_dict[part] = []  # We want everything to be in the dictionary
+                parts_dict[part] = []
             if p.get_overhangs()[0] == rev_comp(part.get_overhangs()[1]):  # p's 5' checking to part's 3' rev comp
                 if p.get_overhangs()[0] == "":
                     if blunt:
@@ -397,17 +393,16 @@ def ligate(
                         parts_dict[part] = []
                     parts_dict[part].append((p, len(p.get_overhangs()[0])))
 
-    if not parts_dict:
-        raise ReactionError("No parts ligate to one another!")
+    if not parts_dict: raise ReactionError("No parts ligate to one another!")
 
     products: list[list[DNA]] = _generate_all_combinations(parts_dict)
     product_list: list[set[DNA]] = []
     sanitized_list: list[list[DNA]] = []
     # Generate sets to grab unique ones
-    for product in products:
-        if set(product) not in product_list:
-            sanitized_list.append(product)
-            product_list.append(set(product))
+    for product_check in products:
+        if set(product_check) not in product_list:
+            sanitized_list.append(product_check)
+            product_list.append(set(product_check))
 
     # Create the final Assemblies
     final_assemblies: list[DNA] = []
@@ -464,7 +459,8 @@ def _generate_all_combinations(
     path: list[DNA] = [] 
 ) -> list[list[DNA]]:
     """Generates all possible combinations of ligation products,
-    stopping when a cycle is found"""
+    stopping when a cycle is found
+    """
 
     if start is None:
         all_paths: list[list[DNA]] = []
@@ -627,7 +623,10 @@ def golden_gate(
     ligation_outputs: DNA | list[DNA] = ligate(inputs=digest_outputs, gel_extraction=gel_extraction)
     # Get rid of anything that was there originally or has the enzyme in it
     unique_outputs: list[DNA] = [lo for lo in ligation_outputs if all(lo != inp for inp in inputs)]
-    unique_outputs = [op for op in unique_outputs if not contains_re_site(op, RE_ENZYMES[enzyme])]  # Golden gate doesn't return outputs with enzyme in them
+    # Golden gate doesn't return outputs with enzyme in them
+    unique_outputs = [op for op in unique_outputs if not contains_re_site(op, RE_ENZYMES[enzyme])]
+    if len(unique_outputs) == 0:
+        raise ReactionError("No products formed from the golden gate reaction!")
     return unique_outputs[0] if len(unique_outputs) == 1 else unique_outputs
 
 def gel_extract(

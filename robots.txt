@@ -8,6 +8,9 @@ Disallow: /
 User-agent: Google-Extended
 Disallow: /
 
+User-agent: ChatGPT-User
+Disallow: /
+
 User-agent: Meta-ExternalAgent
 User-agent: Meta-ExternalFetch
 Disallow: /
@@ -24,7 +27,6 @@ Disallow: /
 User-agent: Bytespider
 Disallow: /
 
-# Midjourney & Stable Diffusion image training datasets
 User-agent: ImageDesk
 User-agent: MidjourneyBot
 Disallow: /
@@ -39,6 +41,12 @@ User-agent: PerplexityBot-Training
 Disallow: /
 
 User-agent: YouBot
+Disallow: /
+
+User-agent: ImagesiftBot
+Disallow: /
+
+User-agent: FacebookBot
 Disallow: /
 
 User-agent: Omgilibot

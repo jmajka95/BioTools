@@ -1,0 +1,66 @@
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ClaudeBot
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: Meta-ExternalAgent
+User-agent: Meta-ExternalFetch
+Disallow: /
+
+User-agent: Applebot-Extended
+Disallow: /
+
+User-agent: Amazonbot
+Disallow: /
+
+User-agent: cohere-ai
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
+
+# Midjourney & Stable Diffusion image training datasets
+User-agent: ImageDesk
+User-agent: MidjourneyBot
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: Diffbot
+Disallow: /
+
+User-agent: PerplexityBot-Training
+Disallow: /
+
+User-agent: YouBot
+Disallow: /
+
+User-agent: Omgilibot
+User-agent: Omgili
+User-agent: AI2Bot
+User-agent: iaskspider/2.0
+User-agent: Timpibot
+User-agent: PetalBot
+User-agent: Claude-Web
+Disallow: /
+
+User-agent: Googlebot
+Disallow: 
+
+User-agent: Bingbot
+Disallow: 
+
+User-agent: OAI-SearchBot
+Disallow: 
+
+User-agent: Claude-SearchBot
+Disallow: 
+
+User-agent: PerplexityBot
+Disallow: 

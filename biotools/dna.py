@@ -128,7 +128,7 @@ class DNA():
         elif self.is_double_stranded():
             return f"{{ {self.name} | {self.type.value} | [{self.length} bp] | [{len(self.annotations)} Annotation(s)] | ==> }}"
         elif self.is_cut():
-            return f"{{ {self.name} | {self.type.value} | [{self.length} bp] | [{len(self.annotations)} Annotation(s)] | Cut }}"
+            return f"{{ {self.name} | {self.type.value} | [{self.length} bp] | [{len(self.annotations)} Annotation(s)] | =/=> }}"
         else:
             return f"{{ {self.name} | {self.type.value} | [{self.length} bp] | [{len(self.annotations)} Annotation(s)] | --> }}"
     
@@ -219,13 +219,13 @@ class DNA():
                     annotations = reverse_annotations(annotations, new_length)
                     seq = seq[::-1]
                 return DNA(
-                    seq, 
-                    self.name, 
-                    self.type, 
-                    self.circular, 
-                    self.strandedness, 
-                    annotations, 
-                    self.offsets, 
+                    seq,
+                    self.name,
+                    self.type,
+                    self.circular,
+                    self.strandedness,
+                    annotations,
+                    self.offsets,
                     self
                 )
             else: # Circular
@@ -294,6 +294,7 @@ class DNA():
                         BioProperty.LINEAR,
                         self.strandedness,
                         annotations,
+                        self.offsets,
                         self
                     )
                 else: # Regular workflow because the slice is like a linear fragment (start < stop)

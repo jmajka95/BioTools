@@ -174,6 +174,9 @@ def digest(
     circular: bool = True if input.is_circular() else False
     tuple_list: list[tuple[int, int, int, tuple[int, int], int]] = validate_sites(sites, len(input), circular)
 
+    if not tuple_list:
+        raise ReactionError(f"Enzymes {enzymes} do not cut input {input.name}")
+
     products: list[DNA] = []
     # Generate products based on spans
     product_num: int = 1
@@ -389,8 +392,6 @@ def ligate(
                     if blunt:
                         parts_dict[part].append((p, len(p.get_overhangs()[0])))
                 else:  # Non-blunt
-                    if part not in parts_dict:
-                        parts_dict[part] = []
                     parts_dict[part].append((p, len(p.get_overhangs()[0])))
 
     if not parts_dict: raise ReactionError("No parts ligate to one another!")
@@ -613,21 +614,248 @@ def golden_gate(
     ------
     `ReactionError` if the enzyme is not type IIS
     """
-
     if enzyme not in list(RE_ENZYMES.keys())[0:4]:  # Check if enzyme is IIS
         raise ReactionError("Cannot perform Golden Gate reaction without type IIS enzyme!")
 
+    # Digestion
     digest_outputs: list[DNA] = []
-    for inp in inputs:
-        digest_outputs.extend(digest(input=inp, enzymes=[enzyme]))
-    ligation_outputs: DNA | list[DNA] = ligate(inputs=digest_outputs, gel_extraction=gel_extraction)
-    # Get rid of anything that was there originally or has the enzyme in it
-    unique_outputs: list[DNA] = [lo for lo in ligation_outputs if all(lo != inp for inp in inputs)]
-    # Golden gate doesn't return outputs with enzyme in them
-    unique_outputs = [op for op in unique_outputs if not contains_re_site(op, RE_ENZYMES[enzyme])]
-    if len(unique_outputs) == 0:
-        raise ReactionError("No products formed from the golden gate reaction!")
-    return unique_outputs[0] if len(unique_outputs) == 1 else unique_outputs
+    for input in inputs:
+        sites: dict = find_re_sites(input, enzyme)
+
+        circular: bool = True if input.is_circular() else False
+        tuple_list: list[tuple[int, int, int, tuple[int, int], int]] = validate_sites(sites, len(input), circular)
+
+        if not tuple_list:
+            raise ReactionError(f"Enzyme {enzyme} does not cut input {input.name}")
+
+        products: list[DNA] = []
+        # Generate products based on spans
+        product_num: int = 1
+        for i, tup in enumerate(tuple_list):
+            offset = tup[0]
+            span = tup[1]
+            cut_enzyme = tup[2]
+            try:
+                if i == 0:
+                    if i == len(tuple_list) - 1:  # First and last
+                        if input.is_circular():  # Reindex one product
+                            product = input.reindex(span[0] + offset[0], False)
+                            product.seq += product.seq[:offset[1]]  # One enzyme edge case, must add additional seq to look like product
+                            if not contains_re_site(product, RE_ENZYMES[enzyme]):  # Check that the product doesn't contain the GG enzyme
+                                product.circular = BioProperty.LINEAR
+                                product.strandedness = BioProperty.CUT
+                                if offset[-1] == BioOrientation.BOTTOM:
+                                    product.offsets = ((0, offset[1]), (offset[1], 0))
+                                else:
+                                    product.offsets = ((offset[1], 0), (0, offset[1]))
+                                product.name = input.name+f" Product {product_num}"  # The whole original plasmid (no slice)
+                                product.parent = input
+                                product_num += 1
+                                products.append(product)
+                        else: # Make two products
+                            product_1 = input[: span[0]+offset[0]]
+                            product_1.seq += input.seq[span[0]+offset[0] : span[0]+offset[0]+offset[1]]
+                            product_2 = input[span[0] + offset[0]:]
+                            if not contains_re_site(product_1, RE_ENZYMES[enzyme]):
+                                product_1.strandedness = BioProperty.CUT
+                                if offset[-1] == BioOrientation.BOTTOM:
+                                    product_1.offsets = ((0, offset[1]), (0, 0))
+                                else:
+                                    product_1.offsets = ((offset[1], 0), (0, 0))
+                                product_1.name = input.name+f" Product {product_num} [0, {span[0] + offset[0]}]"
+                                product_1.parent = input
+                                product_num += 1
+                                products.append(product_1)
+                            if not contains_re_site(product_2, RE_ENZYMES[enzyme]):
+                                product_2.strandedness = BioProperty.CUT
+                                if offset[-1] == BioOrientation.BOTTOM:
+                                    product_2.offsets = ((0, 0), (offset[1], 0))
+                                else:
+                                    product_2.offsets = ((0, 0), (0, offset[1]))
+                                product_2.name = input.name+f" Product {product_num} [{span[0] + offset[0]}, {len(input)}]"
+                                product_2.parent = input
+                                product_num += 1
+                                products.append(product_2)
+                    else:  # First with at least one more
+                        next_tup = tuple_list[i + 1]
+                        next_span = next_tup[1]
+
+                        # Generate offsets to use
+                        us_slice = span[0] + offset[0] if tup[-1] == BioOrientation.FORWARD else span[1] - offset[0] - offset[1]
+                        ds_slice = next_span[0] + next_tup[0][0] + next_tup[0][1] if next_tup[-1] == \
+                                   BioOrientation.FORWARD else (next_span[1] - next_tup[0][0])
+
+                        if input.is_circular():  # Generate a product that uses the next span
+                            product = input[us_slice:ds_slice]
+                            if not contains_re_site(product, RE_ENZYMES[enzyme]):
+                                product.circular = BioProperty.LINEAR
+                                product.strandedness = BioProperty.CUT
+                                if tuple_list[i + 1][0][-1] == BioOrientation.BOTTOM:
+                                    if offset[-1] == BioOrientation.BOTTOM:
+                                        product.offsets = ((0, tuple_list[i + 1][0][1]), (offset[1], 0))
+                                    else:
+                                        product.offsets = ((offset[1], tuple_list[i + 1][0][1]), (0, 0))
+                                else:
+                                    if offset[-1] == BioOrientation.BOTTOM:
+                                        product.offsets = ((0, 0), (offset[1], tuple_list[i + 1][0][1]))
+                                    else:
+                                        product.offsets = ((offset[1], 0), (0, tuple_list[i + 1][0][1]))
+                                product.name = input.name+f" Product {product_num} [{us_slice}, {ds_slice}]"
+                                product.parent = input
+                                product_num += 1
+                                products.append(product)
+                        else:  # Generate two products
+                            product_1 = input[:us_slice + offset[1]]
+                            product_2 = input[us_slice : ds_slice]
+                            if not contains_re_site(product_1, RE_ENZYMES[enzyme]):
+                                product_1.strandedness = BioProperty.CUT
+                                if offset[-1] == BioOrientation.BOTTOM:
+                                    product_1.offsets = ((0, offset[1]), (0, 0))
+                                else:
+                                    product_1.offsets = ((offset[1], 0), (0, 0))
+                                product_1.name = input.name+f" Product {product_num} [0, {us_slice}]"
+                                product_1.parent = input
+                                product_num += 1
+                                products.append(product_1)
+                            if not contains_re_site(product_2, RE_ENZYMES[enzyme]):
+                                product_2.strandedness = BioProperty.CUT
+                                if tuple_list[i + 1][0][-1] == BioOrientation.BOTTOM:
+                                    if offset[-1] == BioOrientation.BOTTOM:
+                                        product_2.offsets = ((0, tuple_list[i + 1][0][1]), (offset[1], 0))
+                                    else:
+                                        product_2.offsets = ((offset[1], tuple_list[i + 1][0][1]), (0, 0))
+                                else:
+                                    if offset[-1] == BioOrientation.BOTTOM:
+                                        product_2.offsets = ((0, 0), (offset[1], tuple_list[i + 1][0][1]))
+                                    else:
+                                        product_2.offsets = ((offset[1], 0), (0, tuple_list[i + 1][0][1]))
+                                product_2.name = input.name+f" Product {product_num} [{us_slice}, {ds_slice}]"  # TODO: Change naming in some way
+                                product_2.parent = input
+                                product_num += 1
+                                products.append(product_2)
+                elif i == len(tuple_list) - 1:  # Last
+                    if input.is_circular():  # Use first's span
+                        first_tup = tuple_list[0]
+                        first_span = first_tup[1]
+
+                        # Generate offsets to use
+                        us_slice = span[0] + offset[0] if tup[-1] == BioOrientation.FORWARD else span[1] - offset[0] - offset[1]
+                        ds_slice = first_span[0] + first_tup[0][0] + first_tup[0][1] if first_tup[-1] == \
+                                BioOrientation.FORWARD else (first_span[1] - first_tup[0][0])
+
+                        product = input[us_slice:ds_slice]
+                        if not contains_re_site(product, RE_ENZYMES[enzyme]):
+                            product.circular = BioProperty.LINEAR
+                            product.strandedness = BioProperty.CUT
+                            if tuple_list[0][0][-1] == BioOrientation.BOTTOM:
+                                if offset[-1] == BioOrientation.BOTTOM:
+                                    product.offsets = ((0, tuple_list[0][0][1]), (offset[1], 0))
+                                else:
+                                    product.offsets = ((offset[1], tuple_list[0][0][1]), (0, 0))
+                            else:
+                                if offset[-1] == BioOrientation.BOTTOM:
+                                    product.offsets = ((0, 0), (offset[1], tuple_list[0][0][1]))
+                                else:
+                                    product.offsets = ((offset[1], 0), (0, tuple_list[0][0][1]))
+                            product.name = input.name+f" Product {product_num} [{us_slice}, {ds_slice}]"
+                            product.parent = input
+                            product_num += 1
+                            products.append(product)
+                    else: # Go to end
+                        product = input[span[1] - offset[0] - offset[1] :]
+                        if not contains_re_site(product, RE_ENZYMES[enzyme]):
+                            product.strandedness = BioProperty.CUT
+                            if offset[-1] == BioOrientation.BOTTOM:
+                                product.offsets = ((0, 0), (offset[1], 0))
+                            else:
+                                product.offsets = ((0, 0), (0, offset[1]))
+                            product.name = input.name+f" Product {product_num} [{span[0] + offset[0]}, {len(input)}]"
+                            product.parent = input
+                            product_num += 1
+                            products.append(product)
+                else: # Neither first nor last
+                    next_tup = tuple_list[i + 1]
+                    next_span = next_tup[1]
+
+                    # Generate offsets to use
+                    us_slice = span[0] + offset[0] if tup[-1] == BioOrientation.FORWARD else span[1] - offset[0] - offset[1]
+                    ds_slice = next_span[0] + next_tup[0][0] + next_tup[0][1] if next_tup[-1] == \
+                               BioOrientation.FORWARD else (next_span[1] - next_tup[0][0])
+
+                    product = input[us_slice:ds_slice]
+                    if not contains_re_site(product, RE_ENZYMES[enzyme]):
+                        product.circular = BioProperty.LINEAR
+                        product.strandedness = BioProperty.CUT
+                        if tuple_list[i + 1][0][-1] == BioOrientation.BOTTOM:
+                            if offset[-1] == BioOrientation.BOTTOM:
+                                product.offsets = ((0, tuple_list[i + 1][0][1]), (offset[1], 0))
+                            else:
+                                product.offsets = ((offset[1], tuple_list[i + 1][0][1]), (0, 0))
+                        else:
+                            if offset[-1] == BioOrientation.BOTTOM:
+                                product.offsets = ((0, 0), (offset[1], tuple_list[i + 1][0][1]))
+                            else:
+                                product.offsets = ((offset[1], 0), (0, tuple_list[i + 1][0][1]))
+                        product.name = input.name+f" Product {product_num} [{us_slice}, {ds_slice}]"
+                        product.parent = input
+                        product_num += 1
+                        products.append(product)
+            except IndexError:
+                raise ReactionError(f"{cut_enzyme} cut off of the input fragment. Check enzyme and cleavage locations.")
+        digest_outputs.extend(products)
+
+    # Ligation
+    all_parts: list[DNA] = sorted(list(set(digest_outputs)))  # Sort for deterministic fragment generation, remove dups
+
+    parts_dict: dict[DNA, list[tuple[DNA, int]]] = {}
+    for part in all_parts:
+        for p in all_parts:
+            if part not in parts_dict:
+                parts_dict[part] = []
+            if p.get_overhangs()[0] == rev_comp(part.get_overhangs()[1]):  # p's 5' checking to part's 3' rev comp
+                parts_dict[part].append((p, len(p.get_overhangs()[0])))
+
+    if not parts_dict: raise ReactionError("No parts ligate to one another!")
+
+    products: list[list[DNA]] = _generate_all_combinations(parts_dict)
+    product_list: list[set[DNA]] = []
+    sanitized_list: list[list[DNA]] = []
+    # Generate sets to grab unique ones
+    for product_check in products:
+        if set(product_check) not in product_list:
+            sanitized_list.append(product_check)
+            product_list.append(set(product_check))
+
+    # Create the final Assemblies
+    final_assemblies: list[DNA] = []
+    new_seq: DNA = None
+    prev_part: DNA = None
+    new_name: list[str] = []
+
+    for product_list in sanitized_list:
+        if product_list[0] == product_list[-1]:  # Circular product, only want these in GG
+            for i, part in enumerate(product_list):
+                if i == 0:
+                    new_seq = part
+                    new_name = [part.name]
+                else:
+                    slice_idx: int = [p[1] for p in parts_dict[prev_part] if p[0] == part][0]
+                    if i == len(product_list) - 1:  # Final part, don't add because it repeats first part
+                        new_seq = new_seq[: len(new_seq) - slice_idx]  # Trim to remove slicing repeat of overlap
+                        if all(new_seq != inp for inp in inputs):
+                            new_seq.name = f"{new_name} Ligation Product"
+                            new_seq.strandedness = BioProperty.DOUBLE_STRANDED
+                            new_seq.circular = BioProperty.CIRCULAR
+                            new_seq.offsets = ((0, 0), (0, 0))
+                            final_assemblies.append(new_seq)
+                    else:
+                        new_name += [part.name]
+                        new_seq = new_seq.concatenate([part[slice_idx :]])
+                prev_part = part
+
+    # Gel extraction
+    if gel_extraction: return gel_extract(*final_assemblies, extraction_len_range=gel_extraction)
+    return final_assemblies[0] if len(final_assemblies) == 1 else final_assemblies
 
 def gel_extract(
     *inputs: DNA,

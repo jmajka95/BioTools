@@ -67,7 +67,7 @@ class BioReactionStep:
                f"KWARGS: {self._print_kwargs()}"
 
     def __hash__(self) -> int:
-        return hash((self.name + self.type))
+        return hash((self.name + self.type.name))
 
     def simulate(self, kwargs: dict[Any, Any] | None = None) -> DNA | list[Any]:
         """Simulates the reaction of self.type with self.kwargs.

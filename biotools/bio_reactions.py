@@ -1,15 +1,5 @@
 """bio_reactions.py
 Functions supporting reactions using DNA sequences.
-
-Available Functions:
-1. amplify()
-2. kld()
-3. digest()
-4. ligate()
-5. gibson()
-6. golden_gate()
-7. gel_extract()
-8. anneal_oligos()
 """
 from biotools.dna import DNA
 from biotools.oligo import Oligo
@@ -812,8 +802,9 @@ def golden_gate(
         for p in all_parts:
             if part not in parts_dict:
                 parts_dict[part] = []
-            if p.get_overhangs()[0] == rev_comp(part.get_overhangs()[1]):  # p's 5' checking to part's 3' rev comp
-                parts_dict[part].append((p, len(p.get_overhangs()[0])))
+            p_oh: str = p.get_overhangs()[0]
+            if p_oh == rev_comp(part.get_overhangs()[1]):  # p's 5' checking to part's 3' rev comp
+                parts_dict[part].append((p, len(p_oh)))
 
     if not parts_dict: raise ReactionError("No parts ligate to one another!")
 
@@ -822,9 +813,10 @@ def golden_gate(
     sanitized_list: list[list[DNA]] = []
     # Generate sets to grab unique ones
     for product_check in products:
-        if set(product_check) not in product_list:
+        prod_set: set[DNA] = set(product_check)
+        if prod_set not in product_list:
             sanitized_list.append(product_check)
-            product_list.append(set(product_check))
+            product_list.append(prod_set)
 
     # Create the final Assemblies
     final_assemblies: list[DNA] = []
@@ -839,7 +831,10 @@ def golden_gate(
                     new_seq = part
                     new_name = [part.name]
                 else:
-                    slice_idx: int = [p[1] for p in parts_dict[prev_part] if p[0] == part][0]
+                    slice_idx: int
+                    for p in parts_dict[prev_part]:
+                        if p[0] == part:
+                            slice_idx = p[1]
                     if i == len(product_list) - 1:  # Final part, don't add because it repeats first part
                         new_seq = new_seq[: len(new_seq) - slice_idx]  # Trim to remove slicing repeat of overlap
                         if all(new_seq != inp for inp in inputs):

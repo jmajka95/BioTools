@@ -106,6 +106,7 @@ class BioReactionStep:
 
         # Generate arg list to create tuples for starmap
         arg_combos: list[tuple[Any]] = []
+        func: Callable = getattr(br, func_map[self.type])
 
         if self._has_pool: # Perform pool workflow via multiprocessing
             match self.type:
@@ -115,8 +116,8 @@ class BioReactionStep:
                     elif isinstance(kargs["template"], list):
                         seqs: list[DNA] = kargs["template"]
                     arg_combos = [
-                        (kargs["f_primer"], kargs["r_primer"], seqs[i], kargs["min_binding_length"], kargs["gel_extraction"]) \
-                        for i in range(len(seqs))
+                        (kargs["f_primer"], kargs["r_primer"], seq, kargs["min_binding_length"], kargs["gel_extraction"]) \
+                        for seq in seqs
                     ]
                 case BioReaction.ANNEAL:
                     seqs: list[Any] = []
@@ -132,7 +133,7 @@ class BioReactionStep:
                     else:
                         input_args.append([kargs["r_oligo"]])
 
-                    seqs: list[list[DNA | list[DNA]]] = list(product(*input_args))
+                    seqs: list[list[DNA | list[DNA]]] = product(*input_args)
                     arg_combos = [
                         (seqs[i][0], seqs[i][1]) for i in range(len(seqs))
                     ]
@@ -140,8 +141,8 @@ class BioReactionStep:
                     # Check "input"
                     seqs = kargs["input"].get_pools()
                     arg_combos = [
-                        (seqs[i], kargs["enzymes"], kargs["gel_extraction"]) \
-                        for i in range(len(seqs))
+                        (seqs, kargs["enzymes"], kargs["gel_extraction"]) \
+                        for seq in seqs
                     ]
                 case BioReaction.GIBSON:
                     # Check "inputs"
@@ -152,10 +153,10 @@ class BioReactionStep:
                         else:
                             input_args.append([input])
 
-                    input_combos = list(product(*input_args))
+                    input_combos = product(*input_args)
                     arg_combos = [
-                        (input_combos[i], kargs["min_homology_len"], kargs["max_homology_len"], kargs["gel_extraction"]) \
-                        for i in range(len(input_combos))
+                        (combo, kargs["min_homology_len"], kargs["max_homology_len"], kargs["gel_extraction"]) \
+                        for combo in input_combos
                     ]
                 case BioReaction.GG:
                     input_args: list[DNA | list[DNA]] = []
@@ -165,15 +166,15 @@ class BioReactionStep:
                         else:
                             input_args.append([input])
 
-                    input_combos = list(product(*input_args))
+                    input_combos = product(*input_args)
                     arg_combos = [
-                        (input_combos[i], kargs["enzyme"], kargs["gel_extraction"]) \
-                        for i in range(len(input_combos)) 
+                        (combo, kargs["enzyme"], kargs["gel_extraction"]) \
+                        for combo in input_combos
                     ]
                 case BioReaction.KLD:
                     seqs: list[DNA] = kargs["input"].get_pools()
                     arg_combos = [
-                        (seqs[i],) for i in range(len(seqs))
+                        (seq,) for seq in seqs
                     ]
                 case BioReaction.LIGATE:
                     # Check "inputs"
@@ -184,31 +185,31 @@ class BioReactionStep:
                         else:
                             input_args.append([input])
 
-                    input_combos = list(product(*input_args))
+                    input_combos = product(*input_args)
                     arg_combos = [
-                        (input_combos[i], kargs["gel_extraction"], kargs["blunt"], kargs["allow_linear"]) \
-                        for i in range(len(input_combos)) 
+                        (combo, kargs["gel_extraction"], kargs["blunt"], kargs["allow_linear"]) \
+                        for combo in input_combos
                     ]
 
             # Run and return combinations of args
             with multiprocessing.Pool(processes=os.cpu_count()-1) as pool:
-                return pool.starmap(getattr(br, func_map[self.type]), arg_combos)
+                return pool.starmap(func, arg_combos)
 
         match self.type:  # Check if lists are present when they shouldn't be.
             case BioReaction.AMPLIFY:  # NOTE: We don't consider ANNEAL here
                 if isinstance(kargs["template"], list):
                     seqs: list[DNA] = kargs["template"]
                 arg_combos = [
-                    (kargs["f_primer"], kargs["r_primer"], seqs[i], kargs["min_binding_length"], kargs["gel_extraction"]) \
-                    for i in range(len(seqs))
+                    (kargs["f_primer"], kargs["r_primer"], seq, kargs["min_binding_length"], kargs["gel_extraction"]) \
+                    for seq in seqs
                 ]
             case BioReaction.DIGEST:
                 # Check "input"
                 if isinstance(kargs["input"], list):
                     seqs = kargs["input"]
                     arg_combos = [
-                        (seqs[i], kargs["enzymes"], kargs["gel_extraction"]) \
-                        for i in range(len(seqs))
+                        (seq, kargs["enzymes"], kargs["gel_extraction"]) \
+                        for seq in seqs
                     ]
             case BioReaction.GIBSON:
                 # Check "inputs"
@@ -221,10 +222,10 @@ class BioReactionStep:
                     else:
                         input_args.append([input])
                 if has_list:
-                    input_combos = list(product(*input_args))
+                    input_combos = product(*input_args)
                     arg_combos = [
-                        (input_combos[i], kargs["min_homology_len"], kargs["max_homology_len"], kargs["gel_extraction"]) \
-                        for i in range(len(input_combos))
+                        (combo, kargs["min_homology_len"], kargs["max_homology_len"], kargs["gel_extraction"]) \
+                        for combo in input_combos
                     ]
             case BioReaction.GG:
                 input_args: list[DNA | list[DNA]] = []
@@ -236,16 +237,16 @@ class BioReactionStep:
                     else:
                         input_args.append([input])
                 if has_list:
-                    input_combos = list(product(*input_args))
+                    input_combos = product(*input_args)
                     arg_combos = [
-                        (input_combos[i], kargs["enzyme"], kargs["gel_extraction"]) \
-                        for i in range(len(input_combos))
+                        (combo, kargs["enzyme"], kargs["gel_extraction"]) \
+                        for combo in input_combos
                     ]
             case BioReaction.KLD:
                 if isinstance(kargs["input"], list):
                     seqs: list[DNA] = kargs["input"]
                     arg_combos = [
-                        (seqs[i],) for i in range(len(seqs))
+                        (seq,) for seq in seqs
                     ]
             case BioReaction.LIGATE:
                 # Check "inputs"
@@ -259,17 +260,17 @@ class BioReactionStep:
                         input_args.append([input])
 
                 if has_list:
-                    input_combos = list(product(*input_args))
+                    input_combos = product(*input_args)
                     arg_combos = [
-                        (input_combos[i], kargs["gel_extraction"], kargs["blunt"], kargs["allow_linear"]) \
-                        for i in range(len(input_combos)) 
+                        (combo, kargs["gel_extraction"], kargs["blunt"], kargs["allow_linear"]) \
+                        for combo in input_combos 
                     ]
 
         if arg_combos:  # Multiprocessing workflow
             with multiprocessing.Pool(processes=os.cpu_count()-1) as pool:
-                return pool.starmap(getattr(br, func_map[self.type]), arg_combos)
+                return pool.starmap(func, arg_combos)
         # We have no input lists where they usually aren't and no pools
-        return getattr(br, func_map[self.type])(**kargs)
+        return func(**kargs)
 
     def _print_kwargs(self) -> str:
         """Generates printable dictionary in a pretty format for __repr__"""

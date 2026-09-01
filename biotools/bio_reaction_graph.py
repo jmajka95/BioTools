@@ -74,8 +74,6 @@ class BioReactionGraph:
         Products from the reaction simulation if the simulation was successful,
         raises a SimulationError otherwise.
         """
-
-        output: DNA | list[DNA] = None
         keys: list[Any] = list(self.graph_dict.keys())
         values: list[Any] = list(self.graph_dict.values())
         all_values: list[Any] = [v for val in values for v in val]
@@ -209,7 +207,7 @@ class BioReactionGraph:
             g.edge(step[0].name, step[1].name)
             graph_dict[step[0]].add(step[1])
 
-            if step[0] not in step_dict:  # TODO: Need to make step_dict every time we run simulate otherwise the dict saves stuff and adds more each time
+            if step[0] not in step_dict:
                 step_dict[step[0]] = {}
             if step[1] not in step_dict:
                 step_dict[step[1]] = {}
@@ -258,6 +256,7 @@ class BioReactionGraph:
             if not edge in self.edges:
                 raise ValueError(f"Edge {edge} not found!")
             self.edges.remove(edge)
+
         self.graph, self.graph_dict, self.nx_graph, self.step_dict = self._generate_graph()
 
     def add_edges(self, *edges: tuple[BioReactionStep, BioReactionStep]) -> None:

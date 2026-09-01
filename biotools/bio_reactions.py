@@ -126,8 +126,7 @@ def kld(input: DNA) -> DNA:
         input.type,
         BioProperty.CIRCULAR,
         input.strandedness,
-        input.annotations,
-        input.parent
+        input.annotations
     )
 
 def digest(
@@ -187,7 +186,6 @@ def digest(
                         else:
                             product.offsets = ((offset[1], 0), (0, offset[1]))
                         product.name = input.name+f" Product {product_num}"  # The whole original plasmid (no slice)
-                        product.parent = input
                         product_num += 1
                         products.append(product)
                     else: # Make two products
@@ -199,7 +197,6 @@ def digest(
                         else:
                             product_1.offsets = ((offset[1], 0), (0, 0))
                         product_1.name = input.name+f" Product {product_num} [0, {span[0] + offset[0]}]"
-                        product_1.parent = input
                         product_num += 1
                         product_2 = input[span[0] + offset[0]:]
                         product_2.strandedness = BioProperty.CUT
@@ -208,7 +205,6 @@ def digest(
                         else:
                             product_2.offsets = ((0, 0), (0, offset[1]))
                         product_2.name = input.name+f" Product {product_num} [{span[0] + offset[0]}, {len(input)}]"
-                        product_2.parent = input
                         product_num += 1
                         products.extend([product_1, product_2])
                 else: # Just first with at least one more
@@ -235,7 +231,6 @@ def digest(
                             else:
                                 product.offsets = ((offset[1], 0), (0, tuple_list[i + 1][0][1]))
                         product.name = input.name+f" Product {product_num} [{us_slice}, {ds_slice}]"
-                        product.parent = input
                         product_num += 1
                         products.append(product)
                     else:  # Generate two products
@@ -246,7 +241,6 @@ def digest(
                         else:
                             product_1.offsets = ((offset[1], 0), (0, 0))
                         product_1.name = input.name+f" Product {product_num} [0, {us_slice}]"
-                        product_1.parent = input
                         product_num += 1
                         product_2 = input[us_slice:ds_slice]
                         product_2.strandedness = BioProperty.CUT
@@ -261,7 +255,6 @@ def digest(
                             else:
                                 product_2.offsets = ((offset[1], 0), (0, tuple_list[i + 1][0][1]))
                         product_2.name = input.name+f" Product {product_num} [{us_slice}, {ds_slice}]"
-                        product_2.parent = input
                         product_num += 1
                         products.extend([product_1, product_2])
             elif i == len(tuple_list) - 1:  # Last
@@ -288,7 +281,6 @@ def digest(
                         else:
                             product.offsets = ((offset[1], 0), (0, tuple_list[0][0][1]))
                     product.name = input.name+f" Product {product_num} [{us_slice}, {ds_slice}]"
-                    product.parent = input
                     product_num += 1
                     products.append(product)
 
@@ -300,7 +292,6 @@ def digest(
                     else:
                         product.offsets = ((0, 0), (0, offset[1]))
                     product.name = input.name+f" Product {product_num} [{span[0] + offset[0]}, {len(input)}]"
-                    product.parent = input
                     product_num += 1
                     products.append(product)
             else: # Neither first nor last
@@ -326,7 +317,6 @@ def digest(
                     else:
                         product.offsets = ((offset[1], 0), (0, tuple_list[i + 1][0][1]))
                 product.name = input.name+f" Product {product_num} [{us_slice}, {ds_slice}]"
-                product.parent = input
                 product_num += 1
                 products.append(product)
         except IndexError:
@@ -639,7 +629,6 @@ def golden_gate(
                                 else:
                                     product.offsets = ((offset[1], 0), (0, offset[1]))
                                 product.name = input.name+f" Product {product_num}"  # The whole original plasmid (no slice)
-                                product.parent = input
                                 product_num += 1
                                 products.append(product)
                         else: # Make two products
@@ -653,7 +642,6 @@ def golden_gate(
                                 else:
                                     product_1.offsets = ((offset[1], 0), (0, 0))
                                 product_1.name = input.name+f" Product {product_num} [0, {span[0] + offset[0]}]"
-                                product_1.parent = input
                                 product_num += 1
                                 products.append(product_1)
                             if not contains_re_site(product_2, RE_ENZYMES[enzyme]):
@@ -663,7 +651,6 @@ def golden_gate(
                                 else:
                                     product_2.offsets = ((0, 0), (0, offset[1]))
                                 product_2.name = input.name+f" Product {product_num} [{span[0] + offset[0]}, {len(input)}]"
-                                product_2.parent = input
                                 product_num += 1
                                 products.append(product_2)
                     else:  # First with at least one more
@@ -691,7 +678,6 @@ def golden_gate(
                                     else:
                                         product.offsets = ((offset[1], 0), (0, tuple_list[i + 1][0][1]))
                                 product.name = input.name+f" Product {product_num} [{us_slice}, {ds_slice}]"
-                                product.parent = input
                                 product_num += 1
                                 products.append(product)
                         else:  # Generate two products
@@ -704,7 +690,6 @@ def golden_gate(
                                 else:
                                     product_1.offsets = ((offset[1], 0), (0, 0))
                                 product_1.name = input.name+f" Product {product_num} [0, {us_slice}]"
-                                product_1.parent = input
                                 product_num += 1
                                 products.append(product_1)
                             if not contains_re_site(product_2, RE_ENZYMES[enzyme]):
@@ -720,7 +705,6 @@ def golden_gate(
                                     else:
                                         product_2.offsets = ((offset[1], 0), (0, tuple_list[i + 1][0][1]))
                                 product_2.name = input.name+f" Product {product_num} [{us_slice}, {ds_slice}]"  # TODO: Change naming in some way
-                                product_2.parent = input
                                 product_num += 1
                                 products.append(product_2)
                 elif i == len(tuple_list) - 1:  # Last
@@ -748,7 +732,6 @@ def golden_gate(
                                 else:
                                     product.offsets = ((offset[1], 0), (0, tuple_list[0][0][1]))
                             product.name = input.name+f" Product {product_num} [{us_slice}, {ds_slice}]"
-                            product.parent = input
                             product_num += 1
                             products.append(product)
                     else: # Go to end
@@ -760,7 +743,6 @@ def golden_gate(
                             else:
                                 product.offsets = ((0, 0), (0, offset[1]))
                             product.name = input.name+f" Product {product_num} [{span[0] + offset[0]}, {len(input)}]"
-                            product.parent = input
                             product_num += 1
                             products.append(product)
                 else: # Neither first nor last
@@ -787,7 +769,6 @@ def golden_gate(
                             else:
                                 product.offsets = ((offset[1], 0), (0, tuple_list[i + 1][0][1]))
                         product.name = input.name+f" Product {product_num} [{us_slice}, {ds_slice}]"
-                        product.parent = input
                         product_num += 1
                         products.append(product)
             except IndexError:
@@ -823,6 +804,7 @@ def golden_gate(
     new_seq: DNA = None
     prev_part: DNA = None
     new_name: list[str] = []
+    slice_idx: int
 
     for product_list in sanitized_list:
         if product_list[0] == product_list[-1]:  # Circular product, only want these in GG
@@ -831,7 +813,6 @@ def golden_gate(
                     new_seq = part
                     new_name = [part.name]
                 else:
-                    slice_idx: int
                     for p in parts_dict[prev_part]:
                         if p[0] == part:
                             slice_idx = p[1]

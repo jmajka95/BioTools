@@ -36,8 +36,6 @@ class DNA():
         A list of annotations present on the DNA
     offsets: tuple[tuple[int,int], tuple[int,int]]
         Offsets defining overhangs at either end of the DNA fragment for cut DNA
-    parent: DNA
-        The molecule of DNA from which self was generated, if applicable
 
     Examples
     --------
@@ -62,8 +60,7 @@ class DNA():
         circular: BioProperty = BioProperty.LINEAR,
         strandedness: BioProperty = BioProperty.DOUBLE_STRANDED,
         annotations: list[BioAnnotation | Block] | None = None,
-        offsets: tuple[tuple[int,int], tuple[int,int]] = ((0,0),(0,0)),
-        parent: DNA = None
+        offsets: tuple[tuple[int,int], tuple[int,int]] = ((0,0),(0,0))
     ):
         """Default constructor."""
         if validate_sequence(seq, type):
@@ -96,7 +93,9 @@ class DNA():
         ((0, 0), (0, 0)) implies that this was created from a reaction and/or contains overhangs.
         """
         self.offsets = offsets
-        self.parent = parent
+        self._has_pool = False
+        self._block_count = 0
+        self._hash = None
 
     @property
     def length(self) -> int:
@@ -159,14 +158,13 @@ class DNA():
                     elif isinstance(annot, Block):
                         annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
             return DNA(
-                self.seq[index], 
-                self.name, 
-                self.type, 
-                self.circular, 
-                self.strandedness, 
-                annotations, 
-                self.offsets, 
-                self
+                self.seq[index],
+                self.name,
+                self.type,
+                self.circular,
+                self.strandedness,
+                annotations,
+                self.offsets
             )
         elif isinstance(index, slice):
             start = index.start if index.start is not None else 0
@@ -225,8 +223,7 @@ class DNA():
                     self.circular,
                     self.strandedness,
                     annotations,
-                    self.offsets,
-                    self
+                    self.offsets
                 )
             else: # Circular
                 if start < 0 or stop > self.length or stop < 0 or start > self.length:
@@ -294,8 +291,7 @@ class DNA():
                         BioProperty.LINEAR,
                         self.strandedness,
                         annotations,
-                        self.offsets,
-                        self
+                        self.offsets
                     )
                 else: # Regular workflow because the slice is like a linear fragment (start < stop)
                     for annot in self.annotations:
@@ -349,27 +345,19 @@ class DNA():
                     BioProperty.LINEAR,
                     self.strandedness,
                     annotations,
-                    self.offsets,
-                    self
+                    self.offsets
                 )
 
     def __hash__(self) -> int:
         """Hashes the sequence, defined as the addition of all hashes of
-        the name, sequence, BioProperties, and annotations."""
-        hash_num: int = 0
-        for key in self.__dict__.keys():
-            if key == "annotations":
-                for annot in self.__dict__[key]:
-                    hash_num += hash(annot)
-            elif key in ["type", "circular", "strandedness"]:
-                hash_num += int(sha256(self.__dict__[key].name.encode()).hexdigest(), 16)
-            elif key == "offsets":
-                if self.__dict__[key]:
-                    for tup in self.__dict__[key]:
-                        hash_num += int(sha256(json.dumps(tup).encode("utf-8")).hexdigest(), 16)
-            else:
-                hash_num += hash(self.__dict__[key])
-        return hash_num
+        the name, sequence, BioProperties, and annotations. Caches the hash as well
+        for performance."""
+        if self._hash is None:
+            self._hash = hash((
+                self.seq, self.name, self.type.name, self.circular,
+                self.strandedness, self.offsets, tuple(self.annotations)
+            ))
+        return self._hash
 
     def __eq__(self, oth: DNA) -> bool:
         """Two DNA are equal if all their properties are equal."""
@@ -377,11 +365,11 @@ class DNA():
             return True
         if not isinstance(oth, DNA):
             return False
-        if (self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations, self.parent) == \
-           (oth.seq, oth.name, oth.type, oth.circular, oth.strandedness, oth.annotations, oth.parent):
+        if (self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations) == \
+           (oth.seq, oth.name, oth.type, oth.circular, oth.strandedness, oth.annotations):
             return True
-        if not ((self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations, self.parent) == \
-               (oth.seq, oth.name, oth.type, oth.circular, oth.strandedness, oth.annotations, oth.parent)) and \
+        if not ((self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations) == \
+               (oth.seq, oth.name, oth.type, oth.circular, oth.strandedness, oth.annotations)) and \
                len(self) == len(oth):  # If they're the same length, could possibly be reindexes of each other
             if self.circular != oth.circular:
                 return False
@@ -391,13 +379,9 @@ class DNA():
         return False
 
     def _check_reindex_equality(self, oth: DNA) -> bool:
-        """Checks equality by reindexing oth length - 1 times to confirm the sequences
-        are never identical.
+        """Checks equality by checking length and rotational equality of oth to self.
         """
-        for i in range(1, len(oth) - 1):
-            if self.seq == oth.reindex(i, False).seq:
-                return True
-        return False
+        return len(self) == len(oth) and oth.seq in (self.seq + oth.seq)
 
     def __add__(self, oth: DNA) -> DNA:
         """Generates a new DNA molecule just taking the sequence. 
@@ -410,8 +394,7 @@ class DNA():
             self.circular,
             self.strandedness,
             self.annotations + oth.annotations,
-            self.offsets,
-            self
+            self.offsets
         )
 
     def __len__(self) -> int:
@@ -450,7 +433,7 @@ class DNA():
     def copy(self) -> DNA:
         """Returns a copy of the DNA sequence."""
         return DNA(self.seq, self.name, self.type, self.circular, \
-                   self.strandedness, self.annotations, self.offsets, self.parent)
+                   self.strandedness, self.annotations, self.offsets)
     
     def rev_comp(self) -> DNA:
         """Returns a DNA copy of the reverse complement of the sequence."""
@@ -471,16 +454,13 @@ class DNA():
         return self.strandedness == BioProperty.CUT
     
     def has_pool(self) -> bool:
-        for annot in self.annotations:
-            if isinstance(annot, Block):
-                return True
-        return False
+        """Checks if self has a pool, defined as a Block."""
+        return self._has_pool
     
     def get_pools(self) -> list[DNA] | None:
         """Returns all sequences generated from Blocks. If more than one Block exists,
         returns all possible combinations of sequences generated.
         """
-
         if not self.has_pool():
             return None
 
@@ -517,8 +497,7 @@ class DNA():
                     seq=new_seq,
                     circular=self.circular,
                     strandedness=self.strandedness,
-                    offsets=self.offsets,
-                    parent=self
+                    offsets=self.offsets
                 )
             )
 
@@ -576,6 +555,12 @@ class DNA():
                                 raise InvalidAnnotationException(f"Block {annot.name} and Block {a.name} cannot overlap!")
 
         for annot in annotations:
+            if isinstance(annot, Block):
+                if not self._has_pool:
+                    self._has_pool = True
+                self._block_count += 1
+
+        for annot in annotations:
             valid = True
             for a in self.annotations:
                 if isinstance(a, type(annot)):
@@ -609,6 +594,10 @@ class DNA():
         for annot in annotations:
             for a in self.annotations:
                 if annot == a.name:
+                    if isinstance(annot, Block):
+                        self._block_count -= 1
+                        if self._block_count == 0:
+                            self._has_pool = False
                     self.annotations.remove(a)
 
     def from_annotation(self, annotation: str) -> DNA:
@@ -792,7 +781,7 @@ class DNA():
             useable_index = index
             
         elif isinstance(index, str):
-            f_matches = list(re.finditer(index, self.seq+self.seq[: len(index) - 1]))
+            f_matches = list(re.finditer(index, self.seq+self.seq[: len(index) - 1]))  # TODO: str.find instead
             if len(f_matches) == 0:
                 raise ValueError(f"Sequence {index} was not found in the DNA!")
             if len(f_matches) > 1:

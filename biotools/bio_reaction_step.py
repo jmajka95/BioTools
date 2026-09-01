@@ -8,7 +8,6 @@ from typing import Callable, Any
 import multiprocessing
 import os
 from itertools import product
-from hashlib import sha256
 
 # Callable function map 
 func_map: dict[BioReaction, Callable] = {
@@ -59,17 +58,7 @@ class BioReactionStep:
         self._has_pool = self._check_pools()
 
     def __eq__(self, oth: BioReactionStep) -> bool:
-        if not isinstance(oth, BioReactionStep):
-            return False
-        if self.name != oth.name:
-            return False
-        if self.kwargs != oth.kwargs:
-            return False
-        if self.type != oth.type:
-            return False
-        if self._has_pool != oth._has_pool:
-            return False
-        return True
+        return isinstance(oth, BioReactionStep) and self.name == oth.name and self.type == oth.type
 
     def __repr__(self) -> None:
         """Represented as BioReaction type and kwargs."""
@@ -78,7 +67,7 @@ class BioReactionStep:
                f"KWARGS: {self._print_kwargs()}"
 
     def __hash__(self) -> int:
-        return int(sha256(self.__repr__().encode()).hexdigest(), 16)
+        return hash((self.name + self.type))
 
     def simulate(self, kwargs: dict[Any, Any] | None = None) -> DNA | list[Any]:
         """Simulates the reaction of self.type with self.kwargs.
@@ -141,7 +130,7 @@ class BioReactionStep:
                     # Check "input"
                     seqs = kargs["input"].get_pools()
                     arg_combos = [
-                        (seqs, kargs["enzymes"], kargs["gel_extraction"]) \
+                        (seq, kargs["enzymes"], kargs["gel_extraction"]) \
                         for seq in seqs
                     ]
                 case BioReaction.GIBSON:

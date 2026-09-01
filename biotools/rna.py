@@ -41,8 +41,7 @@ class RNA:
         type: str = BioMolecule.RNA,
         circular: str = BioProperty.LINEAR,
         strandedness: str = BioProperty.SINGLE_STRANDED,
-        annotations: list[BioAnnotation] | None = None,
-        parent: RNA | None = None
+        annotations: list[BioAnnotation] | None = None
     ):
         """Default constructor."""
         if validate_sequence(seq, type):
@@ -70,7 +69,6 @@ class RNA:
                 self.annotations = annotations
         else:
             self.annotations = []
-        self.parent = parent if parent is not None else None
 
     @property
     def length(self) -> int:
@@ -121,14 +119,13 @@ class RNA:
                     elif isinstance(annot, Block):
                         annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
             return RNA(
-                self.seq[index], 
-                self.name, 
-                self.type, 
-                self.circular, 
-                self.strandedness, 
-                annotations, 
-                self.offsets, 
-                self
+                self.seq[index],
+                self.name,
+                self.type,
+                self.circular,
+                self.strandedness,
+                annotations,
+                self.offsets
             )
         elif isinstance(index, slice):
             start = index.start if index.start is not None else 0
@@ -181,14 +178,13 @@ class RNA:
                     annotations = reverse_annotations(annotations, new_length)
                     seq = seq[::-1]
                 return RNA(
-                    seq, 
-                    self.name, 
-                    self.type, 
-                    self.circular, 
-                    self.strandedness, 
-                    annotations, 
-                    self.offsets, 
-                    self
+                    seq,
+                    self.name,
+                    self.type,
+                    self.circular,
+                    self.strandedness,
+                    annotations,
+                    self.offsets
                 )
             else: # Circular
                 if start < 0 or stop > self.length or stop < 0 or start > self.length:
@@ -255,8 +251,7 @@ class RNA:
                         self.type,
                         BioProperty.LINEAR,
                         self.strandedness,
-                        annotations,
-                        self
+                        annotations
                     )
                 else: # Regular workflow because the slice is like a linear fragment (start < stop)
                     for annot in self.annotations:
@@ -304,13 +299,12 @@ class RNA:
                     annotations = reverse_annotations(annotations, new_length)
                     seq = seq[::-1]
                 return RNA(
-                    seq, 
-                    self.name, self.type, 
-                    BioProperty.LINEAR, 
-                    self.strandedness, 
-                    annotations, 
-                    self.offsets, 
-                    self
+                    seq,
+                    self.name, self.type,
+                    BioProperty.LINEAR,
+                    self.strandedness,
+                    annotations,
+                    self.offsets,
                 )
 
     def __hash__(self):
@@ -320,8 +314,8 @@ class RNA:
     def __eq__(self, other):
         if other is self:
             return True
-        return (self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations, self.parent) == \
-               (other.seq, other.name, other.type, other.circular, other.strandedness, other.annotations, self.parent)
+        return (self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations) == \
+               (other.seq, other.name, other.type, other.circular, other.strandedness, other.annotations)
     
     def __add__(self, other):
         """Generates a new RNA molecule just taking the sequence. This works on linear and circular DNA."""
@@ -350,7 +344,7 @@ class RNA:
     def copy(self) -> RNA:
         """Returns a copy of the RNA sequence."""
         return RNA(self.seq, self.name, self.type, self.circular, \
-                   self.strandedness, self.annotations, self.parent)
+                   self.strandedness, self.annotations)
     
     def rev_comp(self) -> RNA:
         """Returns an RNA copy of the reverse complement of the sequence."""

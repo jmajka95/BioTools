@@ -621,7 +621,7 @@ def golden_gate(
                         if input.is_circular():  # Reindex one product
                             product = input.reindex(span[0] + offset[0], False)
                             product.seq += product.seq[:offset[1]]  # One enzyme edge case, must add additional seq to look like product
-                            if not contains_re_site(product, RE_ENZYMES[enzyme]):  # Check that the product doesn't contain the GG enzyme
+                            if not contains_re_site(product, enzyme):  # Check that the product doesn't contain the GG enzyme
                                 product.circular = BioProperty.LINEAR
                                 product.strandedness = BioProperty.CUT
                                 if offset[-1] == BioOrientation.BOTTOM:
@@ -635,7 +635,7 @@ def golden_gate(
                             product_1 = input[: span[0]+offset[0]]
                             product_1.seq += input.seq[span[0]+offset[0] : span[0]+offset[0]+offset[1]]
                             product_2 = input[span[0] + offset[0]:]
-                            if not contains_re_site(product_1, RE_ENZYMES[enzyme]):
+                            if not contains_re_site(product_1, enzyme):
                                 product_1.strandedness = BioProperty.CUT
                                 if offset[-1] == BioOrientation.BOTTOM:
                                     product_1.offsets = ((0, offset[1]), (0, 0))
@@ -644,7 +644,7 @@ def golden_gate(
                                 product_1.name = input.name+f" Product {product_num} [0, {span[0] + offset[0]}]"
                                 product_num += 1
                                 products.append(product_1)
-                            if not contains_re_site(product_2, RE_ENZYMES[enzyme]):
+                            if not contains_re_site(product_2, enzyme):
                                 product_2.strandedness = BioProperty.CUT
                                 if offset[-1] == BioOrientation.BOTTOM:
                                     product_2.offsets = ((0, 0), (offset[1], 0))
@@ -664,7 +664,7 @@ def golden_gate(
 
                         if input.is_circular():  # Generate a product that uses the next span
                             product = input[us_slice:ds_slice]
-                            if not contains_re_site(product, RE_ENZYMES[enzyme]):
+                            if not contains_re_site(product, enzyme):
                                 product.circular = BioProperty.LINEAR
                                 product.strandedness = BioProperty.CUT
                                 if tuple_list[i + 1][0][-1] == BioOrientation.BOTTOM:
@@ -683,7 +683,7 @@ def golden_gate(
                         else:  # Generate two products
                             product_1 = input[:us_slice + offset[1]]
                             product_2 = input[us_slice : ds_slice]
-                            if not contains_re_site(product_1, RE_ENZYMES[enzyme]):
+                            if not contains_re_site(product_1, enzyme):
                                 product_1.strandedness = BioProperty.CUT
                                 if offset[-1] == BioOrientation.BOTTOM:
                                     product_1.offsets = ((0, offset[1]), (0, 0))
@@ -692,7 +692,7 @@ def golden_gate(
                                 product_1.name = input.name+f" Product {product_num} [0, {us_slice}]"
                                 product_num += 1
                                 products.append(product_1)
-                            if not contains_re_site(product_2, RE_ENZYMES[enzyme]):
+                            if not contains_re_site(product_2, enzyme):
                                 product_2.strandedness = BioProperty.CUT
                                 if tuple_list[i + 1][0][-1] == BioOrientation.BOTTOM:
                                     if offset[-1] == BioOrientation.BOTTOM:
@@ -718,7 +718,7 @@ def golden_gate(
                                 BioOrientation.FORWARD else (first_span[1] - first_tup[0][0])
 
                         product = input[us_slice:ds_slice]
-                        if not contains_re_site(product, RE_ENZYMES[enzyme]):
+                        if not contains_re_site(product, enzyme):
                             product.circular = BioProperty.LINEAR
                             product.strandedness = BioProperty.CUT
                             if tuple_list[0][0][-1] == BioOrientation.BOTTOM:
@@ -736,7 +736,7 @@ def golden_gate(
                             products.append(product)
                     else: # Go to end
                         product = input[span[1] - offset[0] - offset[1] :]
-                        if not contains_re_site(product, RE_ENZYMES[enzyme]):
+                        if not contains_re_site(product, enzyme):
                             product.strandedness = BioProperty.CUT
                             if offset[-1] == BioOrientation.BOTTOM:
                                 product.offsets = ((0, 0), (offset[1], 0))
@@ -755,7 +755,7 @@ def golden_gate(
                                BioOrientation.FORWARD else (next_span[1] - next_tup[0][0])
 
                     product = input[us_slice:ds_slice]
-                    if not contains_re_site(product, RE_ENZYMES[enzyme]):
+                    if not contains_re_site(product, enzyme):
                         product.circular = BioProperty.LINEAR
                         product.strandedness = BioProperty.CUT
                         if tuple_list[i + 1][0][-1] == BioOrientation.BOTTOM:

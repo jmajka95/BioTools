@@ -101,8 +101,13 @@ def reverse_translate(aa_seq: Protein, rand: bool = False) -> DNA:
         random.seed(1) # For consistent behavior
     return DNA(seq="".join([choice(AA_CODONS[aa_seq.seq[i]]) for i in range(0, len(aa_seq))]))
 
-def contains_re_site(seq: DNA, site: str) -> bool:
-    """Returns True if the DNA sequence contains an re site, else False."""
+def contains_re_site(seq: DNA, enzyme: str) -> bool:
+    """Returns True if the DNA sequence contains the site of the specified restriction
+    enzyme, else False.
+    """
+    if enzyme not in RE_ENZYMES_REGEX.keys():
+        raise ValueError(f"Provided invalid enzyme: {enzyme}.")
+    site: str = RE_ENZYMES_REGEX[enzyme]
     if seq.is_circular():
         return (site in seq.top_strand+seq.top_strand[: len(site) - 1]) \
             or (site in seq.bottom_strand+seq.bottom_strand[: len(site) - 1])

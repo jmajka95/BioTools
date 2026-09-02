@@ -13,8 +13,6 @@ from biotools.bio_exceptions import (
 import bisect
 from itertools import product
 import re
-from hashlib import sha256
-import json
 
 class DNA():
     """
@@ -48,8 +46,6 @@ class DNA():
     >>> dna_slice.sequence()
     ATGCATGCAT
     TACGTACGTA
-
-    >>> foo
     """
 
     def __init__(
@@ -108,7 +104,7 @@ class DNA():
         if self.offsets:
             return self.seq[self.offsets[0][0] : (self.length - self.offsets[0][1])]
         return self.seq
-    
+
     @property
     def bottom_strand(self) -> str:
         """The bottom strand shown 5' -> 3'."""
@@ -118,6 +114,36 @@ class DNA():
             if self.offsets:
                 return rev_comp(self.seq)[self.offsets[1][1] : (self.length - self.offsets[1][0])]
             return rev_comp(self.seq)
+        
+    def __hash__(self) -> int:
+        """Hashes the sequence, defined as the addition of all hashes of
+        the name, sequence, BioProperties, and annotations. Caches the hash as well
+        for performance."""
+        if self._hash is None:  # TODO: How to handle this when stuff is changed?
+            self._hash = hash((
+                self.seq, self.name, self.type.name, self.circular,
+                self.strandedness, self.offsets, tuple(self.annotations)
+            ))
+        return self._hash
+
+    def __eq__(self, oth: DNA) -> bool:
+        """Two DNA are equal if all their properties are equal."""
+        if oth is self:
+            return True
+        if not isinstance(oth, DNA):
+            return False
+        if (self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations) == \
+           (oth.seq, oth.name, oth.type, oth.circular, oth.strandedness, oth.annotations):
+            return True
+        if not ((self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations) == \
+               (oth.seq, oth.name, oth.type, oth.circular, oth.strandedness, oth.annotations)) and \
+               len(self) == len(oth):  # If they're the same length, could possibly be reindexes of each other
+            if self.circular != oth.circular:
+                return False
+            elif not self.is_circular():  # Linear, so can't re-index
+                return False
+            return self._check_reindex_equality(oth)  # Same length with different annotations is same sequence
+        return False
 
     def __repr__(self) -> str:
         """Representation of DNA, generically as name, BioMolecule, length, annotation number, 
@@ -348,36 +374,6 @@ class DNA():
                     self.offsets
                 )
 
-    def __hash__(self) -> int:
-        """Hashes the sequence, defined as the addition of all hashes of
-        the name, sequence, BioProperties, and annotations. Caches the hash as well
-        for performance."""
-        if self._hash is None:
-            self._hash = hash((
-                self.seq, self.name, self.type.name, self.circular,
-                self.strandedness, self.offsets, tuple(self.annotations)
-            ))
-        return self._hash
-
-    def __eq__(self, oth: DNA) -> bool:
-        """Two DNA are equal if all their properties are equal."""
-        if oth is self:
-            return True
-        if not isinstance(oth, DNA):
-            return False
-        if (self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations) == \
-           (oth.seq, oth.name, oth.type, oth.circular, oth.strandedness, oth.annotations):
-            return True
-        if not ((self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations) == \
-               (oth.seq, oth.name, oth.type, oth.circular, oth.strandedness, oth.annotations)) and \
-               len(self) == len(oth):  # If they're the same length, could possibly be reindexes of each other
-            if self.circular != oth.circular:
-                return False
-            elif not self.is_circular():  # Linear, so can't re-index
-                return False
-            return self._check_reindex_equality(oth)  # Same length with different annotations is same sequence
-        return False
-
     def _check_reindex_equality(self, oth: DNA) -> bool:
         """Checks equality by checking length and rotational equality of oth to self.
         """
@@ -411,7 +407,6 @@ class DNA():
         if self.strandedness == BioProperty.SINGLE_STRANDED:
             print(self.seq)
         elif self.strandedness == BioProperty.CUT:
-            # NOTE: Products can probably only be double-stranded? Should I check this?
             print(self.offsets[0][0]*" "+self.seq[self.offsets[0][0]:self.length - self.offsets[0][1]])
             bottom = rev_comp(self.seq)[::-1]
             print(self.offsets[1][0]*" "+bottom[self.offsets[1][0]:len(bottom) - self.offsets[1][1]])

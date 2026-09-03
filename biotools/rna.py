@@ -308,7 +308,6 @@ class RNA:
                 )
 
     def __hash__(self):
-        # TODO: json.dump() hash of specific stuff related to this. Can use for equality
         return hash(self.seq)
     
     def __eq__(self, other):

@@ -442,7 +442,6 @@ def _generate_all_combinations(
     """Generates all possible combinations of ligation products,
     stopping when a cycle is found
     """
-
     if start is None:
         all_paths: list[list[DNA]] = []
         for key in parts_dict.keys():

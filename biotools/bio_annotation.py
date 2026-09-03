@@ -48,7 +48,7 @@ class BioAnnotation():
         if orientation not in BioOrientation:
             raise InvalidInstantiationException("Must provide a valid BioOrientation!")
         self.orientation = orientation
-        self.length = (self.span[1] + 1) - self.span[0]
+        self.length = self.span[1] - self.span[0]
 
     def __repr__(self):
         """Self is represented as name, span, and length."""
@@ -105,7 +105,7 @@ class Block():
         self.name = name 
         self.orientation = orientation
         self.pool = pool
-        self.length = (self.span[1] + 1) - self.span[0]
+        self.length = self.span[1] - self.span[0]
 
     def __repr__(self):
         if self.orientation == BioOrientation.FORWARD:

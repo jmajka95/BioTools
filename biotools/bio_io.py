@@ -93,12 +93,12 @@ class BioFileParser():
                         if "complement" in line:
                             m = re.search(r"complement\((\d+)\.\.(\d+)\)", line)
                             if m:
-                                span = int(m.group(1)) - 1, int(m.group(2)) - 1  # Correcting for indexing convention
+                                span = int(m.group(1)) - 1, int(m.group(2))  # Correcting for indexing convention
                             orientation = BioOrientation.REVERSE
                         elif ".." in line:
                             m = re.search(r"\s*(\d+)\.\.(\d+)", line)
                             if m:
-                                span = int(m.group(1)) - 1, int(m.group(2)) - 1
+                                span = int(m.group(1)) - 1, int(m.group(2))
                         if "label" in line:
                             m = re.search(r"\s*/label=\"(.*)\"", line)
                             if m:

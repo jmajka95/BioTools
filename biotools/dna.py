@@ -416,7 +416,7 @@ class DNA():
 
     def info(self) -> None:
         """Prints out a summary of the DNA sequence."""
-        # TODO: Update to improve, and return sequence instead of print?
+        # TODO: Update to improve
         print("Name: ", self.name)
         print("Sequence: ", self.seq)
         print("Reverse Complement: ", rev_comp(self.seq))
@@ -468,15 +468,13 @@ class DNA():
             if isinstance(annot, Block):
                 if i == 0:
                     next_idx = annot.span[1]
-                    seq = self.seq[: annot.span[0]]
-                    self_seqs.append(seq)
+                    self_seqs.append(self.seq[: annot.span[0]])
                 else:
-                    seq = self.seq[next_idx : annot.span[0]]
-                    self_seqs.append(seq)
+                    self_seqs.append(self.seq[next_idx : annot.span[0]])
                     next_idx = annot.span[1]
                 groups.append(annot.pool.seqs)
 
-        self_seqs.append(self.seq[next_idx :]) # Final sequence with no block seqs after
+        self_seqs.append(self.seq[next_idx :])  # Final sequence with no block seqs after
 
         # Generate all combinations of Blocks and resulting sequences
         seqs: list[DNA] = []
@@ -496,7 +494,7 @@ class DNA():
                 )
             )
 
-        seqs.append(DNA(seq=self.seq)) # Add our own seq because it's not captured in the Block combinations
+        seqs.append(DNA(seq=self.seq))  # Add our own seq because it's not captured in the Block combinations
         return seqs
 
     def has_annotation(self, annotation: str) -> bool:

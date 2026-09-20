@@ -728,7 +728,8 @@ class DNA():
         return Oligo(seq=self.seq, name=self.name+"_oligo")
 
     def print_annotations(self) -> None:
-        """Prints annotations to visualize them sequentially"""
+        """Prints annotations to visualize them by position on self.sequence().
+        Renders a legend that maps chars to annotations."""
         reprs: str = ""
         annot_array: list[str] = []
 

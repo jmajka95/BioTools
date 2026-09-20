@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from biotools.dna import DNA
+    from biotools.rna import RNA
+    from biotools.protein import Protein
 
 from hashlib import sha256
 import json
@@ -24,13 +26,16 @@ class BioAnnotation():
         An identifying name of the BioAnnotation
     orientation: BioOrientation
         The orientation, either forward (top strand) or reverse (bottom strand)
+    parent: DNA | RNA | Protein
+        The parent BioMolecule on which the annotation lives
     """
 
     def __init__(
         self,
         span: tuple[int, int],
         name: str,
-        orientation: BioOrientation
+        orientation: BioOrientation,
+        parent: DNA | RNA | Protein
     ):
         """Default constructor."""
         if not isinstance(span, tuple):
@@ -48,7 +53,11 @@ class BioAnnotation():
         if orientation not in BioOrientation:
             raise InvalidInstantiationException("Must provide a valid BioOrientation!")
         self.orientation = orientation
-        self.length = self.span[1] - self.span[0]
+        self.parent = parent
+        if self.span[0] < self.span[1]:
+            self.length = self.span[1] - self.span[0]
+        else:  # Wraps around
+            self.length = (parent.length - self.span[0]) + self.span[1]
 
     def __repr__(self):
         """Self is represented as name, span, and length."""
@@ -74,6 +83,9 @@ class BioAnnotation():
                int(sha256(json.dumps(self.span).encode("utf-8")).hexdigest(), 16) + \
                int(sha256(json.dumps(self.orientation.name).encode("utf-8")).hexdigest(), 16)
     
+    def is_forward(self) -> bool:
+        return self.orientation == BioOrientation.FORWARD
+
     def copy(self) -> BioAnnotation:
         """Returns a copy of self"""
         return BioAnnotation(self.span, self.name, self.orientation)
@@ -91,6 +103,8 @@ class Block():
         THE
     pool: BioPool
         THE
+    parent: DNA | RNA | Protein
+        THE
     """
 
     def __init__(
@@ -98,14 +112,19 @@ class Block():
         span: tuple[int, int],
         name: str,
         orientation: BioOrientation,
-        pool: BioPool
+        pool: BioPool,
+        parent: DNA | RNA | Protein
     ):
         """Default constructor."""
         self.span = span
         self.name = name 
         self.orientation = orientation
         self.pool = pool
-        self.length = self.span[1] - self.span[0]
+        self.parent = parent
+        if self.span[0] < self.span[1]:
+            self.length = self.span[1] - self.span[0]
+        else:
+            self.length = (parent.length - self.span[0]) + self.span[1]
 
     def __repr__(self):
         if self.orientation == BioOrientation.FORWARD:
@@ -133,6 +152,9 @@ class Block():
 
     def __len__(self) -> int:
         return self.span[1] - self.span[0]
+    
+    def is_forward(self) -> bool:
+        return self.orientation == BioOrientation.FORWARD
 
     def print_pool(self, print_seq: bool = False) -> None:
         """Prints the sequences in self.pool

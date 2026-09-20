@@ -61,7 +61,7 @@ from biotools.bio_pool import BioPool
 
 plasmid =   BFP().parse_genbank("path/to/genbank")
 bp =        BioPool(BFP().parse_fasta("path/to/library/seqs"))
-b =         Block((100, 150), "block", BioOrientation.FORWARD, bp)
+b =         Block((100, 150), "block", BioOrientation.FORWARD, bp, plasmid)
 # Parse DNA sequences into a pool, then make an annotation
 plasmid.add_annotations(b)
 # Adds the Block from slice 100 to 150 of plasmid

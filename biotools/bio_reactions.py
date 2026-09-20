@@ -16,9 +16,9 @@ from biotools.bio_alphabet import RE_ENZYMES
 MIN_PLASMID_LEN: int = 740
 
 def amplify(
-    f_primer: list[Oligo], 
-    r_primer: list[Oligo], 
-    template: DNA, 
+    f_primer: list[Oligo],
+    r_primer: list[Oligo],
+    template: DNA | None,
     min_binding_length: int = 15,
     gel_extraction: list[tuple[int, int]] | None = None
 ) -> DNA | list[DNA]:
@@ -32,10 +32,11 @@ def amplify(
     r_primer: list[Oligo]
         A list of Oligos to use as reverse primers. All Oligos in this list will be
         paired with all Oligos in f_primer
-    template: DNA
+    template: DNA | None
         A DNA to use as template. Must contain binding sites of at least length
-        min_binding_length for the reaction to work
-    min_binding_length: int [DEFAULT = 15]
+        min_binding_length for the reaction to work. If None, then the oligos will
+        be attempted to PCR with one another
+    min_binding_length: int (DEFAULT: 15)
         The minimum binding length allowed for each primer
     gel_extraction: tuple[int, int] (Optional)
         The tuple of lengths to extract
@@ -864,5 +865,23 @@ def gel_extract(
     return extracted_inputs[0] if len(extracted_inputs) == 1 else extracted_inputs
 
 def anneal_oligos(f_oligo: Oligo, r_oligo: Oligo) -> DNA:
-    """Anneals two oligos together, stitching them at their homology."""
+    """Anneals two oligos together, stitching them at their homology.
+    
+    Parameters
+    ----------
+    f_oligo: Oligo
+        The forward oligo
+    r_oligo: Oligo
+        The reverse oligo    
+
+    Returns
+    -------
+    DNA that is annealed appropriately between the oligos. DNA will be
+    CUT if the oligos aren't perfectly complementary, otherwise it will
+    be DOUBLE_STRANDED.
+
+    Raises
+    ------
+    `ReactionError` if there is no homology between the oligos
+    """
     raise NotImplementedError

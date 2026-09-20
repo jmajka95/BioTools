@@ -8,7 +8,6 @@ Contains the following alpabets:
 4. AAV Sequences
 5. Restriction Enzymes
 """
-
 from biotools.bio_enums import BioOrientation
 
 # TODO: Inosine? (i)
@@ -77,7 +76,7 @@ AA_CODONS = {
     "*":["TGA","TAA","TAG"]  # Stop codons
 }
 
-CODONS_AAs = {
+CODON_AAs = {
     "AAA":"K", "AAG":"K", "AAT":"N", "AAC":"N",
     "AGA":"R", "AGG":"R", "AGT":"S", "AGC":"S",
     "ATA":"I", "ATG":"M", "ATT":"I", "ATC":"I",
@@ -267,3 +266,15 @@ RE_ENZYMES_OFFSETS = {
     "BsaXI":            [(-12, 3, BioOrientation.TOP), (18, 3, BioOrientation.TOP)],  # (9/12)ACNNNNNCTCC(10/7)
     "AjuI":             [(-12, 5, BioOrientation.TOP), (20, 5, BioOrientation.TOP)]  # (7/12)GAANNNNNNNTTGG(11/6)
 }
+
+ANNOTATION_CHARS = [
+    "A", "B", "C", "D", "E", "F", "G", "H", "I", "J",
+    "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T",
+    "U", "V", "W", "X", "Y", "Z",
+    "a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
+    "k", "l", "m", "n", "o", "p", "q", "r", "s", "t",
+    "u", "v", "w", "x", "y", "z",
+    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+    "+", "-", "=", "~", ",", ".", ":", "!", "@", "#",
+    "$", "%", "^", "&", "*"
+]

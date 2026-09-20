@@ -98,9 +98,9 @@ class Protein:
                         new_span = (index, index + 1)
                 if new_span is not None:
                     if isinstance(annot, BioAnnotation):
-                        annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
+                        annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
                     elif isinstance(annot, Block):
-                        annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
+                        annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool, self))
             return Protein(
                 self.seq[index], 
                 self.name, 
@@ -154,9 +154,9 @@ class Protein:
                     if new_span is not None:
                         if new_span[0] != new_span[1]:
                             if isinstance(annot, BioAnnotation):
-                                annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
+                                annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
                             elif isinstance(annot, Block):
-                                annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
+                                annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool, self))
                 seq = self.seq[start:stop]
                 if index.step is not None:
                     annotations = reverse_annotations(annotations, new_length)
@@ -223,9 +223,9 @@ class Protein:
                         if new_span is not None:
                             if new_span[0] != new_span[1]:
                                 if isinstance(annot, BioAnnotation):
-                                    annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
+                                    annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
                                 elif isinstance(annot, Block):
-                                    annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
+                                    annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool, self))
                     seq = self.seq[start:]+self.seq[:stop]
                     if index.step is not None:
                         annotations = reverse_annotations(annotations, new_length)
@@ -277,9 +277,9 @@ class Protein:
                         if new_span is not None:
                             if new_span[0] != new_span[1]:
                                 if isinstance(annot, BioAnnotation):
-                                    annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
+                                    annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
                                 elif isinstance(annot, Block):
-                                    annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
+                                    annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool, self))
                 seq = self.seq[start:stop]
                 if index.step is not None:
                     annotations = reverse_annotations(annotations, new_length)

@@ -115,9 +115,9 @@ class RNA:
                         new_span = (index, index + 1)
                 if new_span is not None:
                     if isinstance(annot, BioAnnotation):
-                        annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
+                        annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
                     elif isinstance(annot, Block):
-                        annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
+                        annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool, self))
             return RNA(
                 self.seq[index],
                 self.name,
@@ -170,9 +170,9 @@ class RNA:
                     if new_span is not None:
                         if new_span[0] != new_span[1]:
                             if isinstance(annot, BioAnnotation):
-                                annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
+                                annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
                             elif isinstance(annot, Block):
-                                annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
+                                annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool, self))
                 seq = self.seq[start:stop]
                 if index.step is not None:
                     annotations = reverse_annotations(annotations, new_length)
@@ -238,9 +238,9 @@ class RNA:
                         if new_span is not None:
                             if new_span[0] != new_span[1]:
                                 if isinstance(annot, BioAnnotation):
-                                    annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
+                                    annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
                                 elif isinstance(annot, Block):
-                                    annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
+                                    annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool, self))
                     seq = self.seq[start:]+self.seq[:stop]
                     if index.step is not None:
                         annotations = reverse_annotations(annotations, new_length)
@@ -291,9 +291,9 @@ class RNA:
                         if new_span is not None:
                             if new_span[0] != new_span[1]:
                                 if isinstance(annot, BioAnnotation):
-                                    annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
+                                    annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
                                 elif isinstance(annot, Block):
-                                    annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
+                                    annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool, self))
                 seq = self.seq[start:stop]
                 if index.step is not None:
                     annotations = reverse_annotations(annotations, new_length)
@@ -398,7 +398,7 @@ class RNA:
             if seq.annotations:
                 for annot in seq.annotations:
                     new_span = (annot.span[0]+offset, annot.span[1]+offset)
-                    annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
+                    annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
             offset += len(seq)
 
         return RNA(new_seq, name, self.type, self.circular, self.strandedness, annotations)

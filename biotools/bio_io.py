@@ -2,7 +2,7 @@ from biotools.dna import DNA
 from biotools.bio_annotation import BioAnnotation
 from biotools.bio_enums import BioOrientation, BioProperty
 import re
-
+import os
 
 class BioFileParser():
     """Class for biological file parsing."""
@@ -14,11 +14,13 @@ class BioFileParser():
         Parameters
         ----------
         file_path: str
-        
+            The path to the fasta file to parse
         circular: bool
-        
+            A bool of whether or not the sequences should be treated as circular
+
         Returns
         -------
+        Either a list of DNA or DNA if only one sequence is present in the fasta
         """
 
         # TODO: This assumes that they will be DNA sequences. Any way to infer this? Could also have parameter
@@ -53,7 +55,17 @@ class BioFileParser():
         return dna_list
 
     def parse_genbank(self, file_path: str) -> list[DNA]:
-        """Parses a .gbk file, saving the sequence as a DNA object."""
+        """Parses a .gbk file, saving the sequence as a DNA object.
+
+        Parameters
+        ----------
+        file_path: str
+            The path to the genbank file to parse
+
+        Returns
+        -------
+        Either a list of DNA or DNA if only one sequence is present in the fasta
+        """
 
         sequences:          list[DNA] = []
         annotations:        list[BioAnnotation] = []
@@ -70,7 +82,11 @@ class BioFileParser():
         with open(file_path, "r") as file:
             for line in file:
                 if line.startswith("//"):
-                    sequences.append(DNA(seq, name, circular=circular, annotations=annotations))
+                    dna = DNA(seq, name, circular=circular)
+                    for annot in annotations:
+                        annot.parent = dna
+                    dna.annotations = annotations
+                    sequences.append(dna)
                     seq = ""
                     name = ""
                     annotations = []
@@ -104,7 +120,7 @@ class BioFileParser():
                             if m:
                                 annot_name = m.group(1)
 
-                            annotations.append(BioAnnotation(span, annot_name, orientation))
+                            annotations.append(BioAnnotation(span, annot_name, orientation, None))
                             annot_name = ""
                             span = (0,0)
                             orientation = BioOrientation.FORWARD
@@ -114,11 +130,23 @@ class BioFileParser():
                         seq += new_seq
         return sequences[0] if len(sequences) == 1 else sequences
 
-    def to_fasta(self, *seqs: DNA | list[DNA], filename: str = "test.fasta") -> None:
-        """Generates a fasta file of the provided sequences"""
+    def to_fasta(self, *seqs: DNA | list[DNA], filename: str) -> None:
+        """Generates a fasta file of the provided sequences
+
+        Parameters
+        ----------
+        seqs: DNA | list[DNA]
+            The sequence(s) to convert to a fasta file
+        filename: str
+            The name of the new fasta file
+
+        Returns
+        -------
+        None, creates a new fasta file named as filename
+        """
         if not filename.endswith(".fasta"):
             filename += ".fasta"
-        with open(filename, "w") as f:
+        with open(os.getcwd()+filename, "w") as f:
             for seq in seqs:
                 f.write(f">{seq.name}\n")
                 f.write(f"{seq.seq}\n")

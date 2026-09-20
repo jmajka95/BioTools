@@ -10,9 +10,12 @@ from biotools.bio_annotation import BioAnnotation, Block, BioPool, reverse_annot
 from biotools.bio_exceptions import (
     InvalidSequence, InvalidInstantiationException, InvalidAnnotationException
 )
+from biotools.bio_alphabet import ANNOTATION_CHARS
 import bisect
 from itertools import product
 import re
+from IPython.display import display
+import ipywidgets as widgets
 
 class DNA():
     """
@@ -119,11 +122,22 @@ class DNA():
         """Hashes the sequence, defined as the addition of all hashes of
         the name, sequence, BioProperties, and annotations. Caches the hash as well
         for performance."""
-        if self._hash is None:  # TODO: How to handle this when stuff is changed?
-            self._hash = hash((
+        if self._hash is None:
+            self._hash_tup = (
                 self.seq, self.name, self.type.name, self.circular,
                 self.strandedness, self.offsets, tuple(self.annotations)
-            ))
+            )
+            self._hash = hash(self._hash_tup)
+        else:
+            if self._hash_tup != (
+                self.seq, self.name, self.type.name, self.circular,
+                self.strandedness, self.offsets, tuple(self.annotations)
+            ):
+                self._hash_tup = (
+                    self.seq, self.name, self.type.name, self.circular,
+                    self.strandedness, self.offsets, tuple(self.annotations)
+                )
+                self._hash = hash(self._hash_tup)
         return self._hash
 
     def __eq__(self, oth: DNA) -> bool:
@@ -180,9 +194,9 @@ class DNA():
                         new_span = (index, index + 1)
                 if new_span is not None:
                     if isinstance(annot, BioAnnotation):
-                        annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
+                        annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
                     elif isinstance(annot, Block):
-                        annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
+                        annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool, self))
             return DNA(
                 self.seq[index],
                 self.name,
@@ -235,9 +249,9 @@ class DNA():
                     if new_span is not None:
                         if new_span[0] != new_span[1]:
                             if isinstance(annot, BioAnnotation):
-                                annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
+                                annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
                             elif isinstance(annot, Block):
-                                annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
+                                annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool, self))
                 seq = self.seq[start:stop]
                 if index.step is not None:
                     annotations = reverse_annotations(annotations, new_length)
@@ -303,9 +317,9 @@ class DNA():
                         if new_span is not None:
                             if new_span[0] != new_span[1]:
                                 if isinstance(annot, BioAnnotation):
-                                    annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
+                                    annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
                                 elif isinstance(annot, Block):
-                                    annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
+                                    annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool, self))
                     seq = self.seq[start:]+self.seq[:stop]
                     if index.step is not None:
                         annotations = reverse_annotations(annotations, new_length)
@@ -357,9 +371,9 @@ class DNA():
                         if new_span is not None:
                             if new_span[0] != new_span[1]:
                                 if isinstance(annot, BioAnnotation):
-                                    annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
+                                    annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
                                 elif isinstance(annot, Block):
-                                    annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
+                                    annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool, self))
                 seq = self.seq[start:stop]
                 if index.step is not None:
                     annotations = reverse_annotations(annotations, new_length)
@@ -511,10 +525,6 @@ class DNA():
         ----------
         annotation: BioAnnotation | Block
             One or more annotations to add to self
-
-        Returns
-        -------
-        None
         """
 
         # Spans can't be same
@@ -569,10 +579,6 @@ class DNA():
         ----------
         annotations: str
             One or more names of annotations to remove
-
-        Returns
-        -------
-        None
 
         Raises
         ------
@@ -665,9 +671,9 @@ class DNA():
                 for annot in seq.annotations:
                     new_span = (annot.span[0]+offset, annot.span[1]+offset)
                     if isinstance(annot, BioAnnotation):
-                        annotations.append(BioAnnotation(new_span, annot.name, annot.orientation))
+                        annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
                     else:
-                        annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool))
+                        annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool, self))
             offset += len(seq)
 
         return DNA(
@@ -723,36 +729,104 @@ class DNA():
 
     def print_annotations(self) -> None:
         """Prints annotations to visualize them sequentially"""
-        # TODO: One thing could be something like the length of the annotation in bases is its width.
-        # Maybe just print the annotation where it starts? And have its length in parentheses. Also, should
-        # stack when needed.
-        # Would be sick to have something like table of contents below the printed sequence so can identify 
-        # annotation by number they are in table. In fact, this is what I'll do for all of them
-        # Something like >>1>>, <<2222<<, etc. for fwd and rev, respectively and length 1 and 4
-        # If there's ever overlapping annotations, they will appear stacked
-        sorted_annots = self.annotations.copy()
-        reprs = []
+        reprs: str = ""
+        annot_array: list[str] = []
 
-        for annot in sorted_annots:
+        if len(self.annotations) > 77:
+            print("WARNING!\nANNOTATIONS 78 AND ONWARD WILL NOT BE DISPLAYED!\n")  # TODO: View in web viewer instead!
+
+        for i, annot in enumerate(self.annotations):
+            if i > 76:  # No more than 77 (0-indexed) annotations can be printed
+                break
+            annot_array.append([*["X"] * self.length])
             if annot.span[0] < annot.span[1]:
                 length = annot.span[1] - annot.span[0]
-            else:
+                for n in range(annot.span[0], annot.span[1]):
+                    annot_array[i][n] = ANNOTATION_CHARS[i]
+            else:  # Wraps around
                 length = self.length - annot.span[0] + annot.span[1]
+                for n in range(0, annot.span[1]):  # Beginning to annot.span[1]
+                    annot_array[i][n] = ANNOTATION_CHARS[i]
+                for n in range(annot.span[0], self.length):  # annot.span[0] to end
+                    annot_array[i][n] = ANNOTATION_CHARS[i]
 
-            if annot.orientation == BioOrientation.FORWARD:
-                reprs.append(f">>>{annot.name} ({length} bp)>>>")
+            if annot.is_forward():
+                reprs += f"<text>{ANNOTATION_CHARS[i]}:  >>> {annot.name} ({length} bp) >>><br></text>"
             else:
-                reprs.append(f"<<<{annot.name} ({length} bp)<<<")
+                reprs += f"<text>{ANNOTATION_CHARS[i]}:  <<< {annot.name} ({length} bp) <<<<br></text>"
 
-        if not self.is_circular():
-            print(f"| {' --- '.join([r for r in reprs])} | ==>")
-        else:
-            print(f"| {' --- '.join([r for r in reprs])} | O")
+        self.sequence()
+
+        max_depth: int = 0
+        num_annots: int = len(annot_array)
+        # Calculate max depth
+        for i in range(self.length):
+            pos_max_depth: int = 0
+            for n in range(num_annots):
+                if annot_array[n][i] != "X":
+                    pos_max_depth += 1
+            if pos_max_depth > max_depth:
+                max_depth = pos_max_depth
+
+        # Collapse columns together based on max_depth
+        annot_strings: list[str] = [" " * self.length for n in range(max_depth)]
+        span_list: list[list[tuple[int, int]]] = [[] for n in range(max_depth)]
+        for i, annot in enumerate(self.annotations):
+            annot_span: tuple[int, int] = annot.span
+            for j, spans in enumerate(span_list):
+                overlap: bool = False
+                if spans:  # We have spans to check
+                    for span in spans:
+                        if (annot_span[0] > span[0] and annot_span[0] < span[1]) or \
+                           (annot_span[1] > span[0] and annot_span[1] < span[1]):  # Overlap
+                            overlap = True
+                            break
+                    if not overlap:
+                        if annot_span[0] < annot_span[1]:
+                            annot_strings[j] = annot_strings[j][: span_list[j][-1][1]] + annot_strings[j][span_list[j][-1][1] : annot_span[0]] + \
+                                            ANNOTATION_CHARS[i] * annot.length + annot_strings[j][annot_span[1] :]
+                        else:  # wrap-around annotation
+                            annot_strings[j] = ANNOTATION_CHARS[i] * annot_span[1] + annot_strings[j][annot_span[1] : span_list[j][-1][1]] + \
+                                               annot_strings[j][span_list[j][-1][1] : annot_span[0]] + ANNOTATION_CHARS[i] * (annot.parent.length - annot_span[0])
+                                               
+                        spans.append(annot_span)
+                        break
+                else:  # First span added in that position
+                    if annot_span[0] < annot_span[1]:
+                        annot_strings[j] = annot_strings[j][: annot_span[0]] + \
+                                           ANNOTATION_CHARS[i] * annot.length + annot_strings[j][annot_span[1] :]
+                    else:  # wrap-around annotation
+                        annot_strings[j] = ANNOTATION_CHARS[i] * annot_span[1] + annot_strings[j][annot_span[1] : annot_span[0]] + \
+                                           ANNOTATION_CHARS[i] * (annot.parent.length - annot_span[0])
+                                           
+                    spans.append(annot_span)
+                    break
+
+        # Create and print annotation strings under sequence
+        for annot_string in annot_strings:
+            print(annot_string)
+        print()
+
+        display(
+            widgets.HTML(f"""
+            <div style="
+                background: #1e1e1e;
+                color: #f0f0f0;
+                border: 1px solid #444;
+                border-radius: 8px;
+                padding: 12px;
+                max-height: 300px;
+                overflow-y: auto;
+                font-family: Arial, sans-serif;">
+            {reprs}
+            </div>"""
+            )
+        )
 
     def reindex(self, index: int | str, inplace: bool = True) -> DNA | None:
         """Re-indexes the sequence so that index becomes index 0.
-        NOTE: The default of this function is to perform an inplace reindex, but a new sequence may also
-        be returned by setting inplace to False.
+        NOTE: The default of this function is to perform an inplace reindex, 
+        but a new sequence may also be returned by setting inplace to False.
 
         Parameters
         ----------
@@ -806,7 +880,7 @@ class DNA():
             if inplace:
                 annot.span = (start, stop)
             else:
-                annotations.append(BioAnnotation((start, stop), annot.name, annot.orientation))
+                annotations.append(BioAnnotation((start, stop), annot.name, annot.orientation, self))
 
         if not inplace:
             return DNA(seq, self.name, self.type, self.circular, self.strandedness, annotations, self.offsets)

@@ -127,13 +127,15 @@ class BioReactionGraph:
         output: DNA | list[DNA],
         kwargs: dict[BioReactionStep, dict[str, Any]] | None = None
     ) -> dict[str, Any]:
-        """Formats input for step for proper simulation"""
+        """Formats input for step for proper simulation.
+        If no kwargs are provided, we assume that this is not receiving output from a previous step.
+        """
         if kwargs:  # We need to extend the input arg for the reaction
             match step.type:
                 case BioReaction.AMPLIFY:
-                    raise ValueError("Cannot provide more than one input for amplification reaction!")  # TODO: Update this
+                    kwargs["template"].append(output)
                 case BioReaction.ANNEAL:
-                    raise ValueError("Cannot provide more than one input for amplification reaction!")  # TODO: Update this
+                    raise ValueError("Cannot provide more than one input for anneal reaction!")
                 case BioReaction.DIGEST | BioReaction.KLD | \
                 BioReaction.INPUT:
                     kwargs["input"].append(output)
@@ -227,10 +229,6 @@ class BioReactionGraph:
         ----------
         steps: BioReactionStep
             One or more steps to remove from the graph
-
-        Returns
-        -------
-        None
         """
         for step in steps:
             if not step in self.steps:
@@ -247,10 +245,6 @@ class BioReactionGraph:
         ----------
         edges: BioReactionStep
             One or more edges to remove from the graph
-
-        Returns
-        -------
-        None
         """
         for edge in edges:
             if not edge in self.edges:

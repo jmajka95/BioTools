@@ -9,7 +9,10 @@ from biotools.bio_annotation import BioAnnotation, Block, reverse_annotations
 from biotools.bio_exceptions import (
     InvalidSequence, InvalidInstantiationException, InvalidAnnotationException
 )
+from biotools.bio_alphabet import ANNOTATION_CHARS
 import bisect
+from IPython.display import display
+import ipywidgets as widgets
 
 class Protein:
     """
@@ -40,8 +43,7 @@ class Protein:
         type: str = BioMolecule.PROTEIN,
         circular: str = BioProperty.LINEAR,
         strandedness: str = BioProperty.SINGLE_STRANDED,
-        annotations: list[BioAnnotation] | None = None,
-        parent: Protein | None = None
+        annotations: list[BioAnnotation] | None = None
     ):
         """Default constructor."""
         if validate_sequence(seq, type):
@@ -69,7 +71,10 @@ class Protein:
                 self.annotations = annotations
         else:
             self.annotations = []
-        self.parent = parent if parent is not None else None
+
+        self._has_pool = False
+        self._block_count = 0
+        self._hash = None
 
     @property
     def length(self) -> int:
@@ -102,14 +107,12 @@ class Protein:
                     elif isinstance(annot, Block):
                         annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool, self))
             return Protein(
-                self.seq[index], 
-                self.name, 
-                self.type, 
-                self.circular, 
-                self.strandedness, 
-                annotations, 
-                self.offsets, 
-                self
+                self.seq[index],
+                self.name,
+                self.type,
+                self.circular,
+                self.strandedness,
+                annotations
             )
         elif isinstance(index, slice):
             start = index.start if index.start is not None else 0
@@ -124,185 +127,104 @@ class Protein:
                 if index.step != -1:
                     raise ValueError("Only reversing is allowed as a step for slicing (e.g. dna[::-1])!")
                 
-            # Check orientation, and continue as appropriate
-            if not self.is_circular():
-                if start > stop:
-                    raise IndexError("For linear DNA, first index must be less than the second!")
-                elif start < 0 or stop > len(self.seq):
-                    raise IndexError("Cannot have indices beyond bounds of sequence length!")
-                # Grab annotations that fall within slice
-                for annot in self.annotations:
-                    new_span = None
-                    if annot.span[0] >= start and annot.span[0] < stop: # Start of span is within start and stop
-                        if annot.span[1] <= stop:
-                            new_span = (annot.span[0]-start, annot.span[1]-start)
-                        else:
-                            new_span = (annot.span[0]-start, new_length)
-                    elif annot.span[0] < start:
-                        if annot.span[1] > start and annot.span[1] <= stop:
-                            if annot.span[1] <= stop:
-                                new_span = (0, annot.span[1]-start)
-                            else:
-                                new_span = (0, new_length)
-                        elif annot.span[1] > stop:
-                            new_span = (0, new_length)
-                    elif annot.span[1] > start and annot.span[1] < stop: # Start occurs earlier than new start
+            if start > stop:
+                raise IndexError("For linear DNA, first index must be less than the second!")
+            elif start < 0 or stop > len(self.seq):
+                raise IndexError("Cannot have indices beyond bounds of sequence length!")
+            # Grab annotations that fall within slice
+            for annot in self.annotations:
+                new_span = None
+                if annot.span[0] >= start and annot.span[0] < stop: # Start of span is within start and stop
+                    if annot.span[1] <= stop:
+                        new_span = (annot.span[0]-start, annot.span[1]-start)
+                    else:
+                        new_span = (annot.span[0]-start, new_length)
+                elif annot.span[0] < start:
+                    if annot.span[1] > start and annot.span[1] <= stop:
                         if annot.span[1] <= stop:
                             new_span = (0, annot.span[1]-start)
                         else:
                             new_span = (0, new_length)
-                    if new_span is not None:
-                        if new_span[0] != new_span[1]:
-                            if isinstance(annot, BioAnnotation):
-                                annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
-                            elif isinstance(annot, Block):
-                                annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool, self))
-                seq = self.seq[start:stop]
-                if index.step is not None:
-                    annotations = reverse_annotations(annotations, new_length)
-                    seq = seq[::-1]
-                return Protein(
-                    seq, 
-                    self.name, 
-                    self.type, 
-                    self.circular, 
-                    self.strandedness, 
-                    annotations, 
-                    self.offsets, 
-                    self
-                )
-            else: # Circular
-                if start < 0 or stop > self.length or stop < 0 or start > self.length:
-                    raise IndexError("Cannot have indices beyond bounds of sequence length!")
-                if start > stop:
-                    new_length = (self.length - start) + stop
-                    for annot in self.annotations:
-                        new_span: tuple[int, int] = None
-                        if annot.span[0] >= start: # Span starts within slice bounds of circular sequence
-                            if annot.span[1] <= stop:
-                                new_span = (annot.span[0] - start, (self.length - start) + annot.span[1])
-                            elif annot.span[1] > stop and annot.span[1] > start:
-                                new_span = (annot.span[0] - start, annot.span[1] - start)
-                            else: # Stop must be < length of seq
-                                new_span = (annot.span[0] - start, new_length)
-                        else: # Span starts from start (0) (is less than starting index) NOTE: Here we have to check if the spans are the same because of re-indexing weirdness
-                            if annot.span[0] <= stop: # Case where we truncate the annotation
-                                if annot.span[1] > start: # We don't cut off the annotation
-                                    if annot.span[0] < start:
-                                        if annot.span[0] < annot.span[1]:
-                                            if new_length - (stop - annot.span[0]) == new_length:
-                                                new_span = (0, annot.span[1] - start)
-                                            else:
-                                                new_span = (new_length - (stop - annot.span[0]), annot.span[1] - start)
-                                        else:
-                                            new_span = (annot.span[1] - start , new_length - (stop - annot.span[0]))
-                                    else:
-                                        new_span = (annot.span[1] - start, stop - annot.span[0])
-                                else: # Cut off the annotation at the start
-                                    if annot.span[1] >= stop:
-                                        if annot.span[0] < annot.span[1]:
-                                            new_span = (self.length - start + annot.span[0], self.length - start + annot.span[0] + (stop - annot.span[0]))
-                                        else:
-                                            new_span = (0, stop - annot.span[0])
-                                    else:
-                                        new_span = (self.length - start + annot.span[0], self.length - start + annot.span[0] + (annot.span[1] - annot.span[0]))
-                            else: # We cut off the beginning of the annotation
-                                if annot.span[1] > start: # We don't cut off the annotation
-                                    if annot.span[1] > annot.span[0]:
-                                        new_span = (0, annot.span[1] - start)
-                                    else:    
-                                        new_span = (annot.span[1] - start, new_length)
-                                elif annot.span[0] > annot.span[1]: # Cut off the annotation at the start
-                                    if annot.span[0] < start:
-                                        if annot.span[1] > stop:
-                                            new_span = (0, self.length - start + stop)
-                                        else:
-                                            new_span = (0, self.length - start + annot.span[1])
-                                    else:
-                                        new_span = (self.length - start, new_length)
-                        if new_span is not None:
-                            if new_span[0] != new_span[1]:
-                                if isinstance(annot, BioAnnotation):
-                                    annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
-                                elif isinstance(annot, Block):
-                                    annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool, self))
-                    seq = self.seq[start:]+self.seq[:stop]
-                    if index.step is not None:
-                        annotations = reverse_annotations(annotations, new_length)
-                        seq = seq[::-1]
-                    return Protein(
-                        seq,
-                        self.name,
-                        self.type,
-                        BioProperty.LINEAR,
-                        self.strandedness,
-                        annotations,
-                        self
-                    )
-                else: # Regular workflow because the slice is like a linear fragment (start < stop)
-                    for annot in self.annotations:
-                        new_span: tuple[int, int] = None
-                        if annot.span[0] < annot.span[1]:
-                            if annot.span[0] >= start and annot.span[0] < stop: # Start of span is within start and stop
-                                if annot.span[1] <= stop:
-                                    new_span = (annot.span[0]-start, annot.span[1]-start)
-                                else:
-                                    new_span = (annot.span[0]-start, new_length)
-                            elif annot.span[0] < start:
-                                if annot.span[1] > start and annot.span[1] <= stop:
-                                    if annot.span[1] <= stop:
-                                        new_span = (0, annot.span[1]-start)
-                                    else:
-                                        new_span = (0, new_length)
-                                elif annot.span[1] > stop:
-                                    new_span = (0, new_length)
-                            elif annot.span[1] > start and annot.span[1] < stop: # Start occurs earlier than new start
-                                if annot.span[1] <= stop:
-                                    new_span = (0, annot.span[1]-start)
-                                else:
-                                    new_span = (0, new_length)
-                        else: # End span > beginning span
-                            if annot.span[0] > start and annot.span[0] >= stop:
-                                if annot.span[1] >= start and annot.span[1] <= stop:
-                                    new_span = (0, annot.span[1] - start)
-                                elif annot.span[1] >= start and annot.span[1] > stop: # Greater than stop
-                                    new_span = (0, new_length)
-                            elif annot.span[0] <= stop and annot.span[0] > start and annot.span[1] >= start:
-                                if (annot.span[1] - start) == 0:
-                                    new_span = (annot.span[0] - start, new_length)
-                                else:
-                                    new_span = (annot.span[0] - start, annot.span[1] - start)
-                            elif annot.span[0] <= stop and annot.span[0] > start and annot.span[1] < start:
-                                new_span = (annot.span[0] - start, stop - start)
-                        if new_span is not None:
-                            if new_span[0] != new_span[1]:
-                                if isinstance(annot, BioAnnotation):
-                                    annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
-                                elif isinstance(annot, Block):
-                                    annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool, self))
-                seq = self.seq[start:stop]
-                if index.step is not None:
-                    annotations = reverse_annotations(annotations, new_length)
-                    seq = seq[::-1]
-                return Protein(
-                    seq, 
-                    self.name, self.type, 
-                    BioProperty.LINEAR, 
-                    self.strandedness, 
-                    annotations, 
-                    self.offsets, 
-                    self
-                )
+                    elif annot.span[1] > stop:
+                        new_span = (0, new_length)
+                elif annot.span[1] > start and annot.span[1] < stop: # Start occurs earlier than new start
+                    if annot.span[1] <= stop:
+                        new_span = (0, annot.span[1]-start)
+                    else:
+                        new_span = (0, new_length)
+                if new_span is not None:
+                    if new_span[0] != new_span[1]:
+                        if isinstance(annot, BioAnnotation):
+                            annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
+                        elif isinstance(annot, Block):
+                            annotations.append(Block(new_span, annot.name, annot.orientation, annot.pool, self))
+            seq = self.seq[start:stop]
+            if index.step is not None:
+                annotations = reverse_annotations(annotations, new_length)
+                seq = seq[::-1]
+            return Protein(
+                seq,
+                self.name,
+                self.type,
+                self.circular,
+                self.strandedness,
+                annotations
+            )
 
     def __hash__(self):
-        # TODO: json.dump() hash
-        return hash(self.seq)
+        """Hashes the sequence, defined as the addition of all hashes of
+        the name, sequence, BioProperties, and annotations. Caches the hash as well
+        for performance."""
+        if self._hash is None:
+            self._hash_tup = (
+                self.seq, self.name, self.type.name, self.circular,
+                self.strandedness, tuple(self.annotations)
+            )
+            self._hash = hash(self._hash_tup)
+        else:
+            if self._hash_tup != (
+                self.seq, self.name, self.type.name, self.circular,
+                self.strandedness, tuple(self.annotations)
+            ):
+                self._hash_tup = (
+                    self.seq, self.name, self.type.name, self.circular,
+                    self.strandedness, tuple(self.annotations)
+                )
+                self._hash = hash(self._hash_tup)
+        return self._hash
     
-    def __eq__(self, other):
-        if other is self:
+    def __eq__(self, oth: Protein) -> bool:
+        """Two Proteins are equal if all their properties are equal."""
+        if oth is self:
             return True
-        return (self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations, self.parent) == \
-               (other.seq, other.name, other.type, other.circular, other.strandedness, other.annotations, self.parent)
+        if not isinstance(oth, Protein):
+            return False
+        if (self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations) == \
+            (oth.seq, oth.name, oth.type, oth.circular, oth.strandedness, oth.annotations):
+            return True
+        if not ((self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations) == \
+                (oth.seq, oth.name, oth.type, oth.circular, oth.strandedness, oth.annotations)) and \
+                len(self) == len(oth):  # If they're the same length, could possibly be reindexes of each other
+            if self.circular != oth.circular:
+                return False
+        return False
+
+    def extinction_coefficient(self) -> float:
+        """Returns the extinction coefficient calculated using the 
+        Gill and von Hippel formula:
+        
+        EC = (n_W * 5500) + (n_Y * 1490) + (n_C * 125)
+        n_W = Number of trytophans in the protein
+        n_Y = Number of tyrosines in the protein
+        n_C = Number of cystines in the protein
+        """
+        return self.seq.count("W") * 5500 + \
+               self.seq.count("Y") * 1490 + self.seq.count("C") * 125
+
+    def copy(self) -> Protein:
+        """Returns a copy of the RNA sequence."""
+        return Protein(self.seq, self.name, self.type, self.circular, \
+                       self.strandedness, self.annotations)
 
     def __len__(self):
         return self.length
@@ -311,4 +233,169 @@ class Protein:
         """Prints a string of the Protein sequence."""
         return self.seq
 
-    
+    def add_annotations(self, *annotations: BioAnnotation | Block) -> None:
+        """Adds an annotation or annotations to the DNA sequence.
+
+        Parameters
+        ----------
+        annotation: BioAnnotation | Block
+            One or more annotations to add to self
+        """
+        # Spans can't be same
+        for annot in annotations:
+            if annot.span[0] == annot.span[1]:
+                raise InvalidAnnotationException("Must not have same span indices!")
+
+        for annot in annotations:
+            if annot.span[0] > annot.span[1]:
+                raise InvalidAnnotationException("First index must be less than the second index on a linear sequence!")
+
+        # Validate indices
+        for annot in annotations:
+            if not all(sp >= 0 and sp <= self.length for sp in annot.span):
+                raise InvalidAnnotationException("Span integers must be valid!")
+
+        # Check valid name because of from_annotation()
+        for annot in annotations:
+            if annot.name in [a.name for a in self.annotations]:
+                raise ValueError("Annotations must have unique names!")
+
+        # Check that no Blocks will overlap, if applicable
+        for annot in annotations:
+            if isinstance(annot, Block):
+                for a in self.annotations:
+                    if isinstance(a, Block):
+                        if (annot.span[0] > a.span[0] and annot.span[0] < a.span[1]) or \
+                            (annot.span[1] > a.span[0] and annot.span[1] < a.span[1]):
+                                raise InvalidAnnotationException(f"Block {annot.name} and Block {a.name} cannot overlap!")
+        for annot in annotations:
+            valid = True
+            for a in self.annotations:
+                if isinstance(a, type(annot)):
+                    if annot == a:
+                        valid = False
+            if valid:
+                bisect.insort(self.annotations, annot)
+
+    def concatenate(self, seq_list: list[Protein], name: str = "") -> Protein:
+        """Concatenates two or more Protein sequences together, returning a new Protein sequence."""
+        
+        # A circular sequence can't be concatenated. Where do we concatenate?
+        if any(seq.circular == BioProperty.CIRCULAR for seq in seq_list):
+            raise InvalidSequence("Can't concatenate a circular Protein sequence!")
+
+        if not (all(seq.circular == BioProperty.LINEAR for seq in seq_list)):
+            raise InvalidSequence("Not all provided sequences are the same circularity!")
+        
+        if not (all(seq.type == BioMolecule.Protein for seq in seq_list)):
+            raise InvalidSequence("Not all provided sequences are RNA!")
+
+        # Generate new RNA sequence
+        new_seq = self.seq + "".join([seq.top_strand for seq in seq_list])
+
+        # Generate new annotations, changing their indices as needed
+        annotations = self.annotations
+        offset = len(self.seq) # Used for calculating new offset in slices
+        for seq in seq_list:
+            if seq.annotations:
+                for annot in seq.annotations:
+                    new_span = (annot.span[0] + offset, annot.span[1] + offset)
+                    annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
+            offset += len(seq)
+
+        return Protein(new_seq, name, self.type, self.circular, self.strandedness, annotations)
+
+    def print_annotations(self) -> None:
+        """Prints annotations to visualize them by position on self.sequence().
+        Renders a legend that maps chars to annotations."""
+        reprs: str = ""
+        annot_array: list[str] = []
+
+        if len(self.annotations) > 77:
+            print("WARNING!\nANNOTATIONS 78 AND ONWARD WILL NOT BE DISPLAYED!\n")  # TODO: View in web viewer instead!
+
+        for i, annot in enumerate(self.annotations):
+            if i > 76:  # No more than 77 (0-indexed) annotations can be printed
+                break
+            annot_array.append([*["X"] * self.length])
+            if annot.span[0] < annot.span[1]:
+                length = annot.span[1] - annot.span[0]
+                for n in range(annot.span[0], annot.span[1]):
+                    annot_array[i][n] = ANNOTATION_CHARS[i]
+            else:  # Wraps around
+                length = self.length - annot.span[0] + annot.span[1]
+                for n in range(0, annot.span[1]):  # Beginning to annot.span[1]
+                    annot_array[i][n] = ANNOTATION_CHARS[i]
+                for n in range(annot.span[0], self.length):  # annot.span[0] to end
+                    annot_array[i][n] = ANNOTATION_CHARS[i]
+
+            if annot.is_forward():
+                reprs += f"<text>{ANNOTATION_CHARS[i]}:  >>> {annot.name} ({length} bp) >>><br></text>"
+            else:
+                reprs += f"<text>{ANNOTATION_CHARS[i]}:  <<< {annot.name} ({length} bp) <<<<br></text>"
+
+        self.sequence()
+
+        max_depth: int = 0
+        num_annots: int = len(annot_array)
+        # Calculate max depth
+        for i in range(self.length):
+            pos_max_depth: int = 0
+            for n in range(num_annots):
+                if annot_array[n][i] != "X":
+                    pos_max_depth += 1
+            if pos_max_depth > max_depth:
+                max_depth = pos_max_depth
+
+        # Collapse columns together based on max_depth
+        annot_strings: list[str] = [" " * self.length for n in range(max_depth)]
+        span_list: list[list[tuple[int, int]]] = [[] for n in range(max_depth)]
+        for i, annot in enumerate(self.annotations):
+            annot_span: tuple[int, int] = annot.span
+            for j, spans in enumerate(span_list):
+                overlap: bool = False
+                if spans:  # We have spans to check
+                    for span in spans:
+                        if (annot_span[0] > span[0] and annot_span[0] < span[1]) or \
+                            (annot_span[1] > span[0] and annot_span[1] < span[1]):  # Overlap
+                            overlap = True
+                            break
+                    if not overlap:
+                        if annot_span[0] < annot_span[1]:
+                            annot_strings[j] = annot_strings[j][: span_list[j][-1][1]] + annot_strings[j][span_list[j][-1][1] : annot_span[0]] + \
+                                            ANNOTATION_CHARS[i] * annot.length + annot_strings[j][annot_span[1] :]
+                        else:  # wrap-around annotation
+                            annot_strings[j] = ANNOTATION_CHARS[i] * annot_span[1] + annot_strings[j][annot_span[1] : span_list[j][-1][1]] + \
+                                                annot_strings[j][span_list[j][-1][1] : annot_span[0]] + ANNOTATION_CHARS[i] * (annot.parent.length - annot_span[0])
+                        spans.append(annot_span)
+                        break
+                else:  # First span added in that position
+                    if annot_span[0] < annot_span[1]:
+                        annot_strings[j] = annot_strings[j][: annot_span[0]] + \
+                                            ANNOTATION_CHARS[i] * annot.length + annot_strings[j][annot_span[1] :]
+                    else:  # wrap-around annotation
+                        annot_strings[j] = ANNOTATION_CHARS[i] * annot_span[1] + annot_strings[j][annot_span[1] : annot_span[0]] + \
+                                            ANNOTATION_CHARS[i] * (annot.parent.length - annot_span[0])
+                    spans.append(annot_span)
+                    break
+
+        # Create and print annotation strings under sequence
+        for annot_string in annot_strings:
+            print(annot_string)
+        print()
+
+        display(
+            widgets.HTML(f"""
+            <div style="
+                background: #1e1e1e;
+                color: #f0f0f0;
+                border: 1px solid #444;
+                border-radius: 8px;
+                padding: 12px;
+                max-height: 300px;
+                overflow-y: auto;
+                font-family: Arial, sans-serif;">
+            {reprs}
+            </div>"""
+            )
+        )

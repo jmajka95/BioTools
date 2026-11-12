@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from biotools.oligo import Oligo
+    from biotools.protein import Protein
 
 from biotools.bio_alphabet import NTs
 from biotools.bio_utils import rev_comp, validate_sequence, validate_annotations
@@ -10,7 +11,10 @@ from biotools.bio_annotation import BioAnnotation, Block, reverse_annotations
 from biotools.bio_exceptions import (
     InvalidSequence, InvalidInstantiationException, InvalidAnnotationException
 )
+from biotools.bio_alphabet import ANNOTATION_CHARS, RNA_CODON_AAs
 import bisect
+from IPython.display import display
+import ipywidgets as widgets
 
 class RNA:
     """
@@ -70,6 +74,10 @@ class RNA:
         else:
             self.annotations = []
 
+        self._has_pool = False
+        self._block_count = 0
+        self._hash = None
+
     @property
     def length(self) -> int:
         """The length of the RNA sequence."""
@@ -124,8 +132,7 @@ class RNA:
                 self.type,
                 self.circular,
                 self.strandedness,
-                annotations,
-                self.offsets
+                annotations
             )
         elif isinstance(index, slice):
             start = index.start if index.start is not None else 0
@@ -183,8 +190,7 @@ class RNA:
                     self.type,
                     self.circular,
                     self.strandedness,
-                    annotations,
-                    self.offsets
+                    annotations
                 )
             else: # Circular
                 if start < 0 or stop > self.length or stop < 0 or start > self.length:
@@ -303,18 +309,49 @@ class RNA:
                     self.name, self.type,
                     BioProperty.LINEAR,
                     self.strandedness,
-                    annotations,
-                    self.offsets,
+                    annotations
                 )
 
     def __hash__(self):
-        return hash(self.seq)
+        """Hashes the sequence, defined as the addition of all hashes of
+        the name, sequence, BioProperties, and annotations. Caches the hash as well
+        for performance."""
+        if self._hash is None:
+            self._hash_tup = (
+                self.seq, self.name, self.type.name, self.circular,
+                self.strandedness, tuple(self.annotations)
+            )
+            self._hash = hash(self._hash_tup)
+        else:
+            if self._hash_tup != (
+                self.seq, self.name, self.type.name, self.circular,
+                self.strandedness, tuple(self.annotations)
+            ):
+                self._hash_tup = (
+                    self.seq, self.name, self.type.name, self.circular,
+                    self.strandedness, tuple(self.annotations)
+                )
+                self._hash = hash(self._hash_tup)
+        return self._hash
     
-    def __eq__(self, other):
-        if other is self:
+    def __eq__(self, oth: RNA) -> bool:
+        """Two RNA are equal if all their properties are equal."""
+        if oth is self:
             return True
-        return (self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations) == \
-               (other.seq, other.name, other.type, other.circular, other.strandedness, other.annotations)
+        if not isinstance(oth, RNA):
+            return False
+        if (self.seq, self.name, self.type, self.circular, self.strandedness, self.offsets, self.annotations) == \
+            (oth.seq, oth.name, oth.type, oth.circular, oth.strandedness, oth.offsets, oth.annotations):
+            return True
+        if not ((self.seq, self.name, self.type, self.circular, self.strandedness, self.offsets, self.annotations) == \
+                (oth.seq, oth.name, oth.type, oth.circular, oth.strandedness, oth.offsets, oth.annotations)) and \
+                len(self) == len(oth):  # If they're the same length, could possibly be reindexes of each other
+            if self.circular != oth.circular:
+                return False
+            elif not self.is_circular():  # Linear, so can't re-index
+                return False
+            return self._check_reindex_equality(oth)  # Same length with different annotations is same sequence
+        return False
     
     def __add__(self, other):
         """Generates a new RNA molecule just taking the sequence. This works on linear and circular DNA."""
@@ -322,6 +359,12 @@ class RNA:
     
     def __len__(self):
         return self.length
+
+    def translate(self) -> Protein:
+        """Translates self into a Protein."""
+        if self.length % 3 != 0:
+                    raise InvalidSequence(f"Cannot transcribe into Protein with {self.length} bases!")
+        return Protein(seq="".join([RNA_CODON_AAs[self.seq[i:i+3]] for i in range(0, self.length, 3)]))
     
     def sequence(self) -> None:
         """Prints a string of the RNA sequence."""
@@ -330,15 +373,6 @@ class RNA:
         else:
             print(self.seq)
             print(rev_comp(self.seq)[::-1], False)
-
-    def info(self) -> None:
-        print("Name: ", self.name)
-        print("Sequence: ", self.seq)
-        print("Reverse Complement: ", rev_comp(self.seq, False))
-        print("Length: ", self.length)
-        print("Type: ", self.type.value)
-        print(f"Circular: {self.circular == BioProperty.CIRCULAR:}")
-        print(f"Strandedness: {self.strandedness.value}")
 
     def copy(self) -> RNA:
         """Returns a copy of the RNA sequence."""
@@ -404,25 +438,99 @@ class RNA:
         return RNA(new_seq, name, self.type, self.circular, self.strandedness, annotations)
 
     def print_annotations(self) -> None:
-        """Prints annotations to visualize them sequentially"""
-        sorted_annots = self.annotations.copy()
-        reprs = []
+        """Prints annotations to visualize them by position on self.sequence().
+        Renders a legend that maps chars to annotations."""
+        reprs: str = ""
+        annot_array: list[str] = []
 
-        for annot in sorted_annots:
+        if len(self.annotations) > 77:
+            print("WARNING!\nANNOTATIONS 78 AND ONWARD WILL NOT BE DISPLAYED!\n")  # TODO: View in web viewer instead!
+
+        for i, annot in enumerate(self.annotations):
+            if i > 76:  # No more than 77 (0-indexed) annotations can be printed
+                break
+            annot_array.append([*["X"] * self.length])
             if annot.span[0] < annot.span[1]:
                 length = annot.span[1] - annot.span[0]
-            else:
+                for n in range(annot.span[0], annot.span[1]):
+                    annot_array[i][n] = ANNOTATION_CHARS[i]
+            else:  # Wraps around
                 length = self.length - annot.span[0] + annot.span[1]
+                for n in range(0, annot.span[1]):  # Beginning to annot.span[1]
+                    annot_array[i][n] = ANNOTATION_CHARS[i]
+                for n in range(annot.span[0], self.length):  # annot.span[0] to end
+                    annot_array[i][n] = ANNOTATION_CHARS[i]
 
-            if annot.orientation == BioOrientation.FORWARD:
-                reprs.append(f">>>{annot.name} ({length} bp)>>>")
+            if annot.is_forward():
+                reprs += f"<text>{ANNOTATION_CHARS[i]}:  >>> {annot.name} ({length} bp) >>><br></text>"
             else:
-                reprs.append(f"<<<{annot.name} ({length} bp)<<<")
+                reprs += f"<text>{ANNOTATION_CHARS[i]}:  <<< {annot.name} ({length} bp) <<<<br></text>"
 
-        if self.circular == BioProperty.LINEAR:
-            print(f"| {' --- '.join([r for r in reprs])} | ==>")
-        else:
-            print(f"| {' --- '.join([r for r in reprs])} | O")
+        self.sequence()
+
+        max_depth: int = 0
+        num_annots: int = len(annot_array)
+        # Calculate max depth
+        for i in range(self.length):
+            pos_max_depth: int = 0
+            for n in range(num_annots):
+                if annot_array[n][i] != "X":
+                    pos_max_depth += 1
+            if pos_max_depth > max_depth:
+                max_depth = pos_max_depth
+
+        # Collapse columns together based on max_depth
+        annot_strings: list[str] = [" " * self.length for n in range(max_depth)]
+        span_list: list[list[tuple[int, int]]] = [[] for n in range(max_depth)]
+        for i, annot in enumerate(self.annotations):
+            annot_span: tuple[int, int] = annot.span
+            for j, spans in enumerate(span_list):
+                overlap: bool = False
+                if spans:  # We have spans to check
+                    for span in spans:
+                        if (annot_span[0] > span[0] and annot_span[0] < span[1]) or \
+                            (annot_span[1] > span[0] and annot_span[1] < span[1]):  # Overlap
+                            overlap = True
+                            break
+                    if not overlap:
+                        if annot_span[0] < annot_span[1]:
+                            annot_strings[j] = annot_strings[j][: span_list[j][-1][1]] + annot_strings[j][span_list[j][-1][1] : annot_span[0]] + \
+                                            ANNOTATION_CHARS[i] * annot.length + annot_strings[j][annot_span[1] :]
+                        else:  # wrap-around annotation
+                            annot_strings[j] = ANNOTATION_CHARS[i] * annot_span[1] + annot_strings[j][annot_span[1] : span_list[j][-1][1]] + \
+                                                annot_strings[j][span_list[j][-1][1] : annot_span[0]] + ANNOTATION_CHARS[i] * (annot.parent.length - annot_span[0])
+                        spans.append(annot_span)
+                        break
+                else:  # First span added in that position
+                    if annot_span[0] < annot_span[1]:
+                        annot_strings[j] = annot_strings[j][: annot_span[0]] + \
+                                            ANNOTATION_CHARS[i] * annot.length + annot_strings[j][annot_span[1] :]
+                    else:  # wrap-around annotation
+                        annot_strings[j] = ANNOTATION_CHARS[i] * annot_span[1] + annot_strings[j][annot_span[1] : annot_span[0]] + \
+                                            ANNOTATION_CHARS[i] * (annot.parent.length - annot_span[0])
+                    spans.append(annot_span)
+                    break
+
+        # Create and print annotation strings under sequence
+        for annot_string in annot_strings:
+            print(annot_string)
+        print()
+
+        display(
+            widgets.HTML(f"""
+            <div style="
+                background: #1e1e1e;
+                color: #f0f0f0;
+                border: 1px solid #444;
+                border-radius: 8px;
+                padding: 12px;
+                max-height: 300px;
+                overflow-y: auto;
+                font-family: Arial, sans-serif;">
+            {reprs}
+            </div>"""
+            )
+        )
 
     def reindex(self, index: int) -> None:
         """Re-indexes the sequence so that index becomes index 0."""

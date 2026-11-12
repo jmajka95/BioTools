@@ -5,6 +5,7 @@ if TYPE_CHECKING:
     from biotools.dna import DNA
     from biotools.rna import RNA
     from biotools.protein import Protein
+    from biotools.oligo import Oligo
 
 from hashlib import sha256
 import json
@@ -26,7 +27,7 @@ class BioAnnotation():
         An identifying name of the BioAnnotation
     orientation: BioOrientation
         The orientation, either forward (top strand) or reverse (bottom strand)
-    parent: DNA | RNA | Protein
+    parent: DNA | RNA | Protein | Oligo
         The parent BioMolecule on which the annotation lives
     """
 
@@ -35,7 +36,7 @@ class BioAnnotation():
         span: tuple[int, int],
         name: str,
         orientation: BioOrientation,
-        parent: DNA | RNA | Protein
+        parent: DNA | RNA | Protein | Oligo
     ):
         """Default constructor."""
         if not isinstance(span, tuple):
@@ -96,15 +97,15 @@ class Block():
     Parameters
     ----------
     span: tuple[int, int]
-        THE
-    name: str,
-        THE
+        The span of the Block in the form (start_index, stop_index)
+    name: str
+        The name of the Block
     orientation: BioOrientation:
-        THE
+        The direction of the Block
     pool: BioPool
-        THE
-    parent: DNA | RNA | Protein
-        THE
+        The pool of sequences that the Block contains
+    parent: DNA | RNA | Protein | Oligo
+        The BioMolecule to which the Block belongs
     """
 
     def __init__(
@@ -113,7 +114,7 @@ class Block():
         name: str,
         orientation: BioOrientation,
         pool: BioPool,
-        parent: DNA | RNA | Protein
+        parent: DNA | RNA | Protein | Oligo
     ):
         """Default constructor."""
         self.span = span
@@ -188,8 +189,12 @@ def reverse_annotations(
     Parameters
     ----------
     annotations: list[BioAnnotation]
+        The annotations that are being reversed
     length: int
-    rev_comp: bool"""
+        The length of the parent BioMolecule
+    rev_comp: bool
+        The the orientation of the parent BioMolecule
+    """
     reversed_annotations: list[BioAnnotation] = []
     for a in annotations:
         new_span = (length - a.span[1], length - a.span[0])

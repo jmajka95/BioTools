@@ -130,7 +130,7 @@ class BioFileParser():
                         seq += new_seq
         return sequences[0] if len(sequences) == 1 else sequences
 
-    def to_fasta(self, *seqs: DNA | list[DNA], filename: str) -> None:
+    def to_fasta(self, seqs: DNA | list[DNA], filename: str) -> None:
         """Generates a fasta file of the provided sequences
 
         Parameters

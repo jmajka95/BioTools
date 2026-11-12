@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from biotools.oligo import Oligo
+    from biotools.rna import RNA
 
 from biotools.bio_utils import rev_comp, validate_sequence, validate_annotations
 from biotools.bio_enums import BioMolecule, BioProperty, BioOrientation
@@ -10,7 +11,7 @@ from biotools.bio_annotation import BioAnnotation, Block, BioPool, reverse_annot
 from biotools.bio_exceptions import (
     InvalidSequence, InvalidInstantiationException, InvalidAnnotationException
 )
-from biotools.bio_alphabet import ANNOTATION_CHARS
+from biotools.bio_alphabet import ANNOTATION_CHARS, DNA_TO_RNA
 import bisect
 from itertools import product
 import re
@@ -146,11 +147,11 @@ class DNA():
             return True
         if not isinstance(oth, DNA):
             return False
-        if (self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations) == \
-           (oth.seq, oth.name, oth.type, oth.circular, oth.strandedness, oth.annotations):
+        if (self.seq, self.name, self.type, self.circular, self.strandedness, self.offsets, self.annotations) == \
+           (oth.seq, oth.name, oth.type, oth.circular, oth.strandedness, oth.offsets, oth.annotations):
             return True
-        if not ((self.seq, self.name, self.type, self.circular, self.strandedness, self.annotations) == \
-               (oth.seq, oth.name, oth.type, oth.circular, oth.strandedness, oth.annotations)) and \
+        if not ((self.seq, self.name, self.type, self.circular, self.strandedness, self.offsets, self.annotations) == \
+               (oth.seq, oth.name, oth.type, oth.circular, oth.strandedness, oth.offsets, oth.annotations)) and \
                len(self) == len(oth):  # If they're the same length, could possibly be reindexes of each other
             if self.circular != oth.circular:
                 return False
@@ -175,7 +176,8 @@ class DNA():
         """Grabs and returns a slice of DNA, preserving annotations and re-indexing them
         as appropriate.
         NOTE: Only reversing (-1) is supported as a step when slicing. All other values
-        raise a ValueError."""
+        raise a ValueError.
+        """
         annotations: list[BioAnnotation] = []
         if isinstance(index, int): # Single integer provided
             if index > self.length - 1:
@@ -428,17 +430,6 @@ class DNA():
             print(self.seq)
             print(rev_comp(self.seq)[::-1])
 
-    def info(self) -> None:
-        """Prints out a summary of the DNA sequence."""
-        # TODO: Update to improve
-        print("Name: ", self.name)
-        print("Sequence: ", self.seq)
-        print("Reverse Complement: ", rev_comp(self.seq))
-        print("Length: ", self.length)
-        print("Type: ", self.type.value)
-        print(f"Circular: {self.is_circular()}")
-        print(f"Strandedness: {self.strandedness.value}")
-
     def copy(self) -> DNA:
         """Returns a copy of the DNA sequence."""
         return DNA(self.seq, self.name, self.type, self.circular, \
@@ -452,6 +443,12 @@ class DNA():
             # Generate inverted annotations 
             annots: list[BioAnnotation] = reverse_annotations(self.annotations, self.length, True)
             return DNA(rev_comp(self.seq), self.name+"_revcomp", self.type, self.circular, self.strandedness, annots, self.offsets)
+
+    def transcribe(self) -> RNA:
+        """Transcribes self into RNA, if length % 3 == 0."""
+        if self.length % 3 != 0:
+            raise InvalidSequence(f"Cannot transcribe into RNA with {self.length} bases!")
+        return RNA(seq="".join([DNA_TO_RNA[char] for char in self.seq]))
         
     def is_circular(self) -> bool:
         return self.circular == BioProperty.CIRCULAR
@@ -669,7 +666,7 @@ class DNA():
         for seq in seq_list:
             if seq.annotations:
                 for annot in seq.annotations:
-                    new_span = (annot.span[0]+offset, annot.span[1]+offset)
+                    new_span = (annot.span[0] + offset, annot.span[1] + offset)
                     if isinstance(annot, BioAnnotation):
                         annotations.append(BioAnnotation(new_span, annot.name, annot.orientation, self))
                     else:
@@ -789,7 +786,6 @@ class DNA():
                         else:  # wrap-around annotation
                             annot_strings[j] = ANNOTATION_CHARS[i] * annot_span[1] + annot_strings[j][annot_span[1] : span_list[j][-1][1]] + \
                                                annot_strings[j][span_list[j][-1][1] : annot_span[0]] + ANNOTATION_CHARS[i] * (annot.parent.length - annot_span[0])
-                                               
                         spans.append(annot_span)
                         break
                 else:  # First span added in that position
@@ -799,7 +795,6 @@ class DNA():
                     else:  # wrap-around annotation
                         annot_strings[j] = ANNOTATION_CHARS[i] * annot_span[1] + annot_strings[j][annot_span[1] : annot_span[0]] + \
                                            ANNOTATION_CHARS[i] * (annot.parent.length - annot_span[0])
-                                           
                     spans.append(annot_span)
                     break
 
@@ -973,3 +968,12 @@ class DNA():
                 match_list.append(match.span())
             return match_list[0] if len(match_list) == 1 else match_list
         return None
+
+    def gc(self) -> float:
+        """Calculates the fraction of the sequence that is GC.
+
+        Returns
+        -------
+        A float of the fraction of the sequence that is GC.
+        """
+        return (self.seq.count("G") + self.seq.count("C")) / self.length

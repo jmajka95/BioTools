@@ -1,9 +1,6 @@
-"""bio_utils.py
-
-File defining utility functions to be used for a variety of
+"""File defining utility functions to be used for a variety of
 computational biology needs.
 """
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Iterator, Any
@@ -61,7 +58,7 @@ def calc_mut_bounds(seq: str, ref: str) -> tuple[int, int, int]:
     assert start_pos <= seq_end_pos
     assert start_pos <= ref_end_pos
     return start_pos, seq_end_pos, ref_end_pos
-    
+
 def validate_sequence(seq: str, type: BioMolecule) -> bool:
     """Helper function that validates an input sequence based on valid characters."""
     if type == BioMolecule.DNA:
@@ -88,7 +85,7 @@ def translate(rna: RNA) -> Protein:
     """Translates RNA into protein."""
     from biotools.protein import Protein
     if not isinstance(rna, RNA):
-        raise ValueError(f"Must use RNA as input! Provided {type(rna)}.")
+        raise ValueError(f"Must use RNA as input! Provided {type(rna).__name__}.")
 
     if rna.length % 3 != 0:
         raise Exception("Cannot translate RNA sequence that contains a partial codon.")
@@ -228,7 +225,7 @@ def find_binding_site(
 ) -> tuple[int, int] | Iterator[Match[str]] | None:
     """Finds a binding site(s) for a primer."""
     match = re.finditer(primer.seq[-min_binding_length:], template.seq)
-    
+
     if single:
         while len(list(match)) != 1:
             if (min_binding_length := min_binding_length + 1) > primer.length:
@@ -337,9 +334,15 @@ def validate_sites(
         tup_1 = tuple_list[0]
         site_1 = tup_1[1]
         if tup_1[-1] == BioOrientation.FORWARD:
-            e1_cut_span = (site_1[0] + tup_1[0][0], tup_1[0][0] + tup_1[0][0] + tup_1[0][1])
+            e1_cut_span = (
+                site_1[0] + tup_1[0][0],
+                tup_1[0][0] + tup_1[0][0] + tup_1[0][1]
+            )
         else:  # Must reverse from span[1] because it's 5' bottom strand
-            e1_cut_span = (site_1[1] - tup_1[0][0], site_1[1] - tup_1[0][0] - tup_1[0][1])
+            e1_cut_span = (
+                site_1[1] - tup_1[0][0],
+                site_1[1] - tup_1[0][0] - tup_1[0][1]
+            )
         return [(tup_1[0], tup_1[1], tup_1[2], e1_cut_span, tup_1[3])]
     else:  # Validate span overlaps if we have multiple enzymes / sites
         for tup_1 in tuple_list:
@@ -349,23 +352,42 @@ def validate_sites(
                     site_1 = tup_1[1]
                     site_2 = tup_2[1]
                     if tup_1[-1] == BioOrientation.FORWARD:
-                        e1_cut_span = (site_1[0] + tup_1[0][0], tup_1[0][0] + tup_1[0][0] + tup_1[0][1])
+                        e1_cut_span = (
+                            site_1[0] + tup_1[0][0],
+                            tup_1[0][0] + tup_1[0][0] + tup_1[0][1]
+                        )
                     else:  # Must reverse from span[1] because it's 5' bottom strand
-                        e1_cut_span = (site_1[1] - tup_1[0][0], site_1[1] - tup_1[0][0] - tup_1[0][1])
-                    cuts_tuple_list.append((tup_1[0], tup_1[1], tup_1[2], e1_cut_span, tup_1[3]))
+                        e1_cut_span = (
+                            site_1[1] - tup_1[0][0],
+                            site_1[1] - tup_1[0][0] - tup_1[0][1]
+                        )
+                    cuts_tuple_list.append(
+                        (
+                            tup_1[0], tup_1[1],
+                            tup_1[2], e1_cut_span, tup_1[3]
+                        )
+                    )
                     cut_spans.append(e1_cut_span)
         
                     if tup_2[-1] == BioOrientation.FORWARD:  # Make second enzymes cut span to check for overlaps
-                        e2_cut_span = (site_2[0] + tup_2[0][0], site_2[0] + tup_2[0][0] + tup_2[0][1])
+                        e2_cut_span = (
+                            site_2[0] + tup_2[0][0],
+                            site_2[0] + tup_2[0][0] + tup_2[0][1]
+                        )
                     else:
-                        e2_cut_span = (site_2[1] - tup_2[0][0], site_2[1] - tup_2[0][0] - tup_2[0][1])
+                        e2_cut_span = (
+                            site_2[1] - tup_2[0][0],
+                            site_2[1] - tup_2[0][0] - tup_2[0][1]
+                        )
 
                     # Check for cutting the re site
-                    if (e1_cut_span[0] > site_2[0] and e1_cut_span[0] < site_2[1]) or (e1_cut_span[1] > site_2[0] and e1_cut_span[1] < site_2[1]) \
-                    or (e1_cut_span[0] < site_2[0] and e1_cut_span[1] > site_2[1]):
+                    if (e1_cut_span[0] > site_2[0] and e1_cut_span[0] < site_2[1]) or \
+                       (e1_cut_span[1] > site_2[0] and e1_cut_span[1] < site_2[1]) or \
+                       (e1_cut_span[0] < site_2[0] and e1_cut_span[1] > site_2[1]):
                         raise ReactionError("Enzyme cuts re site!")
                     # Check for cutting the cut site
-                    if (e1_cut_span[0] > e2_cut_span[0] and e1_cut_span[0] < e2_cut_span[1]) or (e1_cut_span[1] > e2_cut_span[0] and e1_cut_span[1] < e2_cut_span[1]):
+                    if (e1_cut_span[0] > e2_cut_span[0] and e1_cut_span[0] < e2_cut_span[1]) or \
+                       (e1_cut_span[1] > e2_cut_span[0] and e1_cut_span[1] < e2_cut_span[1]):
                         raise ReactionError("Enzyme cuts cut site!")
                 
     # Sort based on cut tuple
@@ -391,56 +413,31 @@ def check_homology(p: DNA, q: DNA, min_len: int, max_len: int) -> int | None:
     return None
 
 def get_annealing_temp(
-    primer_1: list[Oligo], 
-    primer_2: list[Oligo], 
-    conc: float = 0.5, 
-    prod_code: str = "q5hs-1"
+    primer_1: list[Oligo],
+    primer_2: list[Oligo]
 ) -> int | list[int]:
-    """Generates an annealing temperature of the provided primers. This uses NEB's Tm API.
-    More information can be found at https://tmapi.neb.com/
-    NOTE: prod_code has been defaulted to that corresponding to Q5 2X Hot Start.
-    
+    """Generates an annealing temperature of the provided primers.
+
     Parameters
     ----------
     primer_1: list[Oligo]
         A list of Oligos of the first primer in the pair
     primer_2: list[Oligo]
         A list of Oligos of the second primer in the pair
-    conc: float (Default: 0.5)
-        A float of the primer concentration in nanomoles
-    prod_code: str (Default: "q5hs-1")
-        The production code of the NEB API.
 
     Returns
     -------
     An integer of the annealing temperature if one pair of primers is passed in, else
     a list of annealing temperatures for all primer pairs provided.
     """
-    
-    url = 'https://tmapi.neb.com/tm/batch'
-    primer_pairs = [(p1.seq, p2.seq) for p1, p2 in zip(primer_1, primer_2)]
-    input = {
-        "seqpairs": primer_pairs,
-        "conc": conc,
-        "prodcode": prod_code
-    }
-    headers = {"content-type" : "application/json"}
-    res = requests.post(url, data=json.dumps(input), headers=headers)
-    r = json.loads(res.content)
 
+    primer_pairs = [(p1.seq, p2.seq) for p1, p2 in zip(primer_1, primer_2)]
+    
     annealing_temps: list[int] = []
-    if r['success']:
-        for row in r['data']:
-            annealing_temps.append(row['ta'])
-    else:
-        print(f"Request failure. Error code: {r['error'][0]}")
+    for pair in primer_pairs:  # Annealing temp is simply min annealing temperature + 1
+        annealing_temps.append(min(pair[0].tm, pair[1].tm) + 1)
 
     return annealing_temps[0] if len(annealing_temps) == 1 else annealing_temps
-
-# TODO: Alignment algorithm? Add to bio_io.py instead?
-def align_sequences(seq: str, ref: str) -> str:
-    """Aligns two sequences together using the X format."""
-    raise NotImplementedError
 
 def to_dataframe(
     *input: DNA | RNA | Protein,
@@ -449,7 +446,7 @@ def to_dataframe(
 ) -> pd.DataFrame:
     """Converts one or many BioMolecules into a pandas DataFrame
     NOTE: Annotations will be lost from this conversion!
-    
+
     Parameters
     ----------
     input: DNA | RNA | Protein

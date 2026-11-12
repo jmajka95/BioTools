@@ -1,6 +1,5 @@
 """Enums for common biological identifying information. 
 """
-
 from enum import Enum
 
 class BioMolecule(Enum):

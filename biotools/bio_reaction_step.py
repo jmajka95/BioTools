@@ -9,7 +9,7 @@ import multiprocessing
 import os
 from itertools import product
 
-# Callable function map 
+# Callable function map
 func_map: dict[BioReaction, Callable] = {
     BioReaction.AMPLIFY:    "amplify",
     BioReaction.ANNEAL:     "anneal_oligos",
@@ -43,6 +43,10 @@ class BioReactionStep:
         NOTE: In BioReactionGraphs, each Step must have a unique name
     kwargs: dict | DNA | None (Default: None)
         A dictionary of the keyword arguments used for the specific reaction
+
+    Examples
+    --------
+    
     """
 
     def __init__(

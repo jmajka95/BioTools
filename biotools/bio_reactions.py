@@ -14,11 +14,12 @@ from biotools.bio_alphabet import RE_ENZYMES
 
 ### Constants ###
 MIN_PLASMID_LEN: int = 740
+MIN_HOMOLOGY_LEN: int = 8
 
 def amplify(
     f_primer: list[Oligo],
     r_primer: list[Oligo],
-    template: DNA | None,
+    template: DNA | Oligo | None,
     min_binding_length: int = 15,
     gel_extraction: list[tuple[int, int]] | None = None
 ) -> DNA | list[DNA]:
@@ -32,8 +33,8 @@ def amplify(
     r_primer: list[Oligo]
         A list of Oligos to use as reverse primers. All Oligos in this list will be
         paired with all Oligos in f_primer
-    template: DNA | None
-        A DNA to use as template. Must contain binding sites of at least length
+    template: DNA | Oligo | None
+        A DNA or Oligo to use as template. Must contain binding sites of at least length
         min_binding_length for the reaction to work. If None, then the oligos will
         be attempted to PCR with one another
     min_binding_length: int (DEFAULT: 15)
@@ -55,6 +56,21 @@ def amplify(
     if any(len(f) < min_binding_length for f in f_primer) or \
        any(len(r) < min_binding_length for r in r_primer):
         raise ReactionError(f"Minimum length of primer must be at least {min_binding_length} bp!")
+
+    # Check if input is None, and anneal oligos accordingly
+    if template is None:
+        output = anneal_oligos(
+            f_oligo=f_primer,
+            r_oligo=r_primer
+        )
+        # Simply convert offsets generated to 0 to make full-length dsDNA
+        # resulting from the PCR
+        output.offsets = ((0,0), (0,0))
+        return output
+
+    # Check if input is Oligo and convert to DNA for function
+    if isinstance(template, Oligo):
+        template = DNA(seq=template.seq)
 
     f_binding_spans: list[tuple[int, int]] = []
     for f in f_primer:
@@ -500,7 +516,7 @@ def gibson(
     ------
     `ValueError` if either min_homology_len or max_homology_len is less than 20
     `ReactionError` if any part is shorter than min_homology_len, any part is
-    circular, or any part is lacking homology at one or both ends
+    circular, or any part is lacking homology at one or both ends.
     """
     if min_homology_len < 20 or max_homology_len < 20:
         raise ValueError("Must check for at least 20 bases of homology between products.")
@@ -860,19 +876,24 @@ def gel_extract(
     dna1 # We get back dna1 because it is between 500 and 600 but not
          # dna2 because it isn't in either range.
     """
-    extracted_inputs: list[DNA] = [input for input in inputs if any(input.length >= elr[0] and input.length <= elr[1] \
-                                                                    for elr in extraction_len_range)]
+    extracted_inputs: list[DNA] = [input for input in inputs if \
+                                   any(input.length >= elr[0] and input.length <= elr[1] for elr in extraction_len_range)]
     return extracted_inputs[0] if len(extracted_inputs) == 1 else extracted_inputs
 
-def anneal_oligos(f_oligo: Oligo, r_oligo: Oligo) -> DNA:
+def anneal_oligos(
+    f_oligo: Oligo,
+    r_oligo: Oligo,
+    name: str | None = None
+) -> DNA:
     """Anneals two oligos together, stitching them at their homology.
-    
+    NOTE: Only exact matches are able to anneal of at least length 8.
+
     Parameters
     ----------
     f_oligo: Oligo
-        The forward oligo
+        The forward oligo to anneal
     r_oligo: Oligo
-        The reverse oligo    
+        The reverse oligo to anneal
 
     Returns
     -------
@@ -882,6 +903,72 @@ def anneal_oligos(f_oligo: Oligo, r_oligo: Oligo) -> DNA:
 
     Raises
     ------
-    `ReactionError` if there is no homology between the oligos
+    `ReactionError` if there is no homology between the oligos or if one or both
+    oligos are shorter than MIN_HOMOLOGY_LEN
     """
-    raise NotImplementedError
+    f_length: int = f_oligo.length
+    r_length: int = r_oligo.length
+    max_len: int = max(f_length, r_length)
+    min_len: int = min(f_length, r_length)
+
+    if f_length < MIN_HOMOLOGY_LEN or \
+       r_length < MIN_HOMOLOGY_LEN:
+        raise ReactionError("One or both oligos are shorter than the minimum " \
+                           f"allowable homology length of {MIN_HOMOLOGY_LEN}.")
+
+    new_name: str = name if name else ""
+
+    if f_oligo.seq == rev_comp(r_oligo.seq):
+        return DNA(seq=f_oligo.seq, name=new_name)
+
+    # Calculate maximum number of shifts needed to check homology
+    shift: int = (min_len - MIN_HOMOLOGY_LEN + 1) + (max_len - min_len) + \
+                 (min_len - MIN_HOMOLOGY_LEN)
+    max_overlap: int = min(f_length, r_length)
+    offsets: tuple[tuple[int, int], tuple[int, int]]
+
+    # Find homology
+    for i in range(MIN_HOMOLOGY_LEN, MIN_HOMOLOGY_LEN + shift):
+        diff: int = max_overlap - i
+        if diff >= 0:  # Haven't reached max overlap
+            if f_oligo[-i :].seq == rev_comp(r_oligo[-i :].seq):  # Match of length i
+                offsets = ((0, r_length - i), (f_length - i, 0))
+                return DNA(
+                    seq=f_oligo.seq + rev_comp(r_oligo.seq[::-1][r_length - (r_length - i) :]),
+                    name=new_name,
+                    strandedness=BioProperty.CUT,
+                    offsets=offsets
+                )
+        else:  # We are fully overlapping the shorter primer
+            f_idx: int = max(0, f_length - i)
+            r_idx: int = max(0, r_length - i)
+            us_overhang: int = f_length - i
+            ds_overhang: int = r_length - i
+            truncation: int = min(0, max_len - i)  # Truncation beings after reaching max primer length
+            if f_oligo[f_idx : f_idx + max_overlap + truncation].seq == rev_comp(r_oligo[r_idx : r_idx + max_overlap + truncation].seq):
+                if us_overhang >= 0 and ds_overhang < 0:  # Top strand 5', 3' stick out
+                    offsets = ((0, 0), (abs(us_overhang), abs(ds_overhang)))
+                    return DNA(
+                        seq=f_oligo.seq,
+                        name=new_name,
+                        strandedness=BioProperty.CUT,
+                        offsets=offsets
+                    )
+                elif us_overhang < 0 and ds_overhang >= 0:  # Bottom strand 5', 3' stick out
+                    offsets = ((abs(us_overhang), abs(ds_overhang)), (0, 0))
+                    return DNA(
+                        seq=rev_comp(r_oligo.seq),
+                        name=new_name,
+                        strandedness=BioProperty.CUT,
+                        offsets=offsets
+                    )
+                else:  # Bottom 3' sticks out, top 3' sticks out
+                    offsets = ((abs(us_overhang), 0), (0, abs(ds_overhang)))
+                    return DNA(
+                        seq=rev_comp(r_oligo[us_overhang :].seq) + f_oligo.seq,
+                        name=new_name,
+                        strandedness=BioProperty.CUT,
+                        offsets=offsets
+                    )
+
+    raise ReactionError(f"No homology was found between the provided oligos for minimum overlap: {MIN_HOMOLOGY_LEN}!")

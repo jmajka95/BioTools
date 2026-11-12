@@ -240,7 +240,8 @@ RE_ENZYMES_INVERTED = {
 # These are of the form (A, B, C)
 # A is the offset to reindex from the beginning of the enzyme recognition site
 # B is the offset for both the end of the top strand and beginning of the bottom strand
-# C is the cutter orientation, where BioOrientation.BOTTOM means the bottom overhangs the top, and BioOrientation.TOP means the opposite
+# C is the cutter orientation, where BioOrientation.BOTTOM means the bottom overhangs the top,
+# and BioOrientation.TOP means the opposite
 RE_ENZYMES_OFFSETS = {
     # Type IIS Enzymes
     "BsaI":             (7, 4, BioOrientation.BOTTOM),
@@ -278,3 +279,5 @@ ANNOTATION_CHARS = [
     "+", "-", "=", "~", ",", ".", ":", "!", "@", "#",
     "$", "%", "^", "&", "*"
 ]
+
+# TODO: Add codons + frequency for codon assignment

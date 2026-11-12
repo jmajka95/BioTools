@@ -1,5 +1,6 @@
 """File defining exceptions to be used during sequence creation and validation, reactions,
-and more."""
+and more.
+"""
 
 class InvalidSequence(Exception):
     """Raised for an invalid DNA sequence"""

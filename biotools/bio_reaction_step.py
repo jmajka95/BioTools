@@ -4,6 +4,7 @@ import biotools.bio_reactions as br
 from biotools.bio_enums import BioReaction
 from biotools.bio_exceptions import SimulationError
 from biotools.dna import DNA
+from biotools.oligo import Oligo
 from typing import Callable, Any
 import multiprocessing
 import os
@@ -104,12 +105,27 @@ class BioReactionStep:
         if self._has_pool: # Perform pool workflow via multiprocessing
             match self.type:
                 case BioReaction.AMPLIFY:
-                    if isinstance(kargs["template"], DNA):
+                    if kargs["template"].has_pool():
                         seqs: list[DNA] = kargs["template"].get_pools()
-                    elif isinstance(kargs["template"], list):
-                        seqs: list[DNA] = kargs["template"]
+                    else:
+                        seqs: list[DNA] = [kargs["template"]]
+
+                    f_primers: list[Oligo] = []
+                    for f_primer in kargs["f_primers"]:
+                        if f_primer.has_pool():
+                            f_primers.append(f_primer.get_pools())
+                        else:
+                            f_primers.append(f_primer)
+
+                    r_primers: list[Oligo] = []
+                    for r_primer in kargs["r_primers"]:
+                        if r_primer.has_pool():
+                            r_primers.append(r_primer.get_pools())
+                        else:
+                            r_primers.append(r_primer)
+
                     arg_combos = [
-                        (kargs["f_primer"], kargs["r_primer"], seq, kargs["min_binding_length"], kargs["gel_extraction"]) \
+                        (f_primers, r_primers, seq, kargs["min_binding_length"], kargs["gel_extraction"]) \
                         for seq in seqs
                     ]
                 case BioReaction.ANNEAL:
@@ -188,12 +204,24 @@ class BioReactionStep:
             with multiprocessing.Pool(processes=os.cpu_count()-1) as pool:
                 return pool.starmap(func, arg_combos)
 
-        match self.type:  # Check if lists are present when they shouldn't be.
-            case BioReaction.AMPLIFY:  # NOTE: We don't consider ANNEAL here
+        match self.type:  # Check if lists are present when they shouldn't be
+            case BioReaction.ANNEAL:
+                if isinstance(kargs["f_oligo"], list):
+                    f_oligos = kargs["f_oligo"]
+                else:
+                    f_oligos = [kargs["f_oligo"]]
+                if isinstance(kargs["r_oligo"], list):
+                    r_oligos = kargs["r_oligo"]
+                else:
+                    r_oligos = [kargs["r_oligo"]]
+                arg_combos = [
+                    (f, r) for f in f_oligos for r in r_oligos
+                ]
+            case BioReaction.AMPLIFY:
                 if isinstance(kargs["template"], list):
                     seqs: list[DNA] = kargs["template"]
                 arg_combos = [
-                    (kargs["f_primer"], kargs["r_primer"], seq, kargs["min_binding_length"], kargs["gel_extraction"]) \
+                    (kargs["f_primers"], kargs["r_primers"], seq, kargs["min_binding_length"], kargs["gel_extraction"]) \
                     for seq in seqs
                 ]
             case BioReaction.DIGEST:
@@ -287,24 +315,33 @@ class BioReactionStep:
         else:
             curr_kwargs = kwargs
 
-        # We accept None for the inputs into the reactions and return False
-        if self.type == BioReaction.AMPLIFY:
-            if not curr_kwargs["template"]: return False
-            return curr_kwargs["template"].has_pool()
-        elif self.type == BioReaction.DIGEST or self.type == BioReaction.KLD:
-            if not curr_kwargs["input"]: return False
-            return curr_kwargs["input"].has_pool()
-        elif self.type == BioReaction.INPUT:
-            return curr_kwargs["input"].has_pool()
-        elif self.type == BioReaction.GIBSON or self.type == BioReaction.GG:
-            if not curr_kwargs["inputs"]:
-                return False
-            for input in curr_kwargs["inputs"]:
-                if input.has_pool():
+        # We accept None for the inputs into the reactions and return False in that case
+        match self.type:
+            case BioReaction.ANNEAL:
+                return curr_kwargs["f_primer"].has_pool() or \
+                       curr_kwargs["r_primer"].has_pool()
+            case BioReaction.AMPLIFY:
+                if curr_kwargs["template"]:
+                    if not curr_kwargs["template"].has_pool():
+                        return any(p.has_pool() for p in curr_kwargs["f_primers"]) \
+                            or any(p.has_pool() for p in curr_kwargs["r_primers"])
                     return True
-        elif self.type == BioReaction.LIGATE:
-            if not curr_kwargs["inputs"]: return False
-            for input in curr_kwargs["inputs"]:
-                if input.has_pool():
-                    return True
+                return any(p.has_pool() for p in curr_kwargs["f_primers"]) \
+                    or any(p.has_pool() for p in curr_kwargs["r_primers"])
+            case BioReaction.DIGEST | BioReaction.KLD:
+                if not curr_kwargs["input"]: return False
+                return curr_kwargs["input"].has_pool()
+            case BioReaction.INPUT:
+                return curr_kwargs["input"].has_pool()
+            case BioReaction.GIBSON | BioReaction.GG:
+                if not curr_kwargs["inputs"]:
+                    return False
+                for input in curr_kwargs["inputs"]:
+                    if input.has_pool():
+                        return True
+            case BioReaction.LIGATE:
+                if not curr_kwargs["inputs"]: return False
+                for input in curr_kwargs["inputs"]:
+                    if input.has_pool():
+                        return True
         return False

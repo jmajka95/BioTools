@@ -24,13 +24,14 @@ def amplify(
     gel_extraction: list[tuple[int, int]] | None = None
 ) -> DNA | list[DNA]:
     """Amplifies DNA using provided primers that must bind at least min_binding_length bases.
+    Generates every possible product of the combination of all primer pairs.
 
     Parameters
     ----------
-    f_primer: list[Oligo]
+    f_primers: list[Oligo]
         A list of Oligos to use as forward primers. All Oligos in this list will be
         paired with all Oligos in r_primer
-    r_primer: list[Oligo]
+    r_primers: list[Oligo]
         A list of Oligos to use as reverse primers. All Oligos in this list will be
         paired with all Oligos in f_primer
     template: DNA | Oligo | None
@@ -65,8 +66,7 @@ def amplify(
                 f_oligo=f,
                 r_oligo=r
             )
-            # Simply convert offsets generated to 0 to make full-length dsDNA
-            # resulting from the PCR
+            # Simply convert offsets generated to 0 to make full-length dsDNA resulting from the PCR
             output.offsets = ((0,0), (0,0))
             outputs.append(output)
         return outputs[0] if len(outputs) == 1 else outputs
@@ -98,7 +98,7 @@ def amplify(
         if not all(f_span[1] - r_span[0] <= -min_binding_length for f_span in f_binding_spans for r_span in r_binding_spans):
             raise ReactionError("Forward primers must be upstream of reverse primers and must not overlap!")
     else:
-        if not all(f_span[1] < r_span[0] for f_span in f_binding_spans for r_span in r_binding_spans):  # TODO: Can span[0] and span[1] be the same?
+        if not all(f_span[1] < r_span[0] for f_span in f_binding_spans for r_span in r_binding_spans):
             raise ReactionError("Forward primers must not overlap with reverse primers!")
 
     final_products: list[DNA] = []

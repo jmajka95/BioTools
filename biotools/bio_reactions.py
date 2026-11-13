@@ -17,9 +17,9 @@ MIN_PLASMID_LEN: int = 740
 MIN_HOMOLOGY_LEN: int = 8
 
 def amplify(
-    f_primer: list[Oligo],
-    r_primer: list[Oligo],
-    template: DNA | Oligo | None,
+    f_primers: list[Oligo],
+    r_primers: list[Oligo],
+    template: DNA | Oligo | None = None,
     min_binding_length: int = 15,
     gel_extraction: list[tuple[int, int]] | None = None
 ) -> DNA | list[DNA]:
@@ -53,27 +53,30 @@ def amplify(
     reverse primers on non-circular templates, or if any forward primer overlaps
     with any reverse primer
     """
-    if any(len(f) < min_binding_length for f in f_primer) or \
-       any(len(r) < min_binding_length for r in r_primer):
+    if any(len(f) < min_binding_length for f in f_primers) or \
+       any(len(r) < min_binding_length for r in r_primers):
         raise ReactionError(f"Minimum length of primer must be at least {min_binding_length} bp!")
 
     # Check if input is None, and anneal oligos accordingly
     if template is None:
-        output = anneal_oligos(
-            f_oligo=f_primer,
-            r_oligo=r_primer
-        )
-        # Simply convert offsets generated to 0 to make full-length dsDNA
-        # resulting from the PCR
-        output.offsets = ((0,0), (0,0))
-        return output
+        outputs: list[DNA] = []
+        for f, r in zip(f_primers, r_primers):
+            output = anneal_oligos(
+                f_oligo=f,
+                r_oligo=r
+            )
+            # Simply convert offsets generated to 0 to make full-length dsDNA
+            # resulting from the PCR
+            output.offsets = ((0,0), (0,0))
+            outputs.append(output)
+        return outputs[0] if len(outputs) == 1 else outputs
 
     # Check if input is Oligo and convert to DNA for function
     if isinstance(template, Oligo):
         template = DNA(seq=template.seq)
 
     f_binding_spans: list[tuple[int, int]] = []
-    for f in f_primer:
+    for f in f_primers:
         site = find_binding_site(primer=f, template=template, single=True)
         if site:
             f_binding_spans.append(site)
@@ -81,7 +84,7 @@ def amplify(
             raise ReactionError(f"No binding sites found for f primer {f.name}!")
 
     r_binding_spans: list[tuple[int, int]] = []
-    for r in r_primer:
+    for r in r_primers:
         site = find_binding_site(primer=r, template=template.rev_comp(), single=True)
         if site:
             # Convert to forward span indices
@@ -103,10 +106,10 @@ def amplify(
     for i, f_span in enumerate(f_binding_spans):
         for j, r_span in enumerate(r_binding_spans):
             product = template[f_span[0]:r_span[1]]
-            if f_span[1] - f_span[0] < f_primer[i].length: # Need to take difference in primer
-                product = DNA(seq=f_primer[i][:f_primer[i].length - (f_span[1] - f_span[0])].seq) + product
-            if r_span[1] - r_span[0] < r_primer[j].length:
-                product = product + DNA(seq=rev_comp(r_primer[j][:r_primer[j].length - (r_span[1] - r_span[0])].seq))
+            if f_span[1] - f_span[0] < f_primers[i].length: # Need to take difference in primer
+                product = DNA(seq=f_primers[i][:f_primers[i].length - (f_span[1] - f_span[0])].seq) + product
+            if r_span[1] - r_span[0] < r_primers[j].length:
+                product = product + DNA(seq=rev_comp(r_primers[j][:r_primers[j].length - (r_span[1] - r_span[0])].seq))
             product.name = template.name+f"_PCR_Product_{i+j+1}"
             final_products.append(product)
 

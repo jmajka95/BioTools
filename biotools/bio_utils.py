@@ -485,7 +485,7 @@ def from_dataframe(
     seq_col: str = "sequence",
     name_col: str | None = None,
     bio_type: BioMolecule | None = None
-) -> DNA | list[DNA] | RNA | list[RNA] | Protein | list[Protein] | list[Any]:
+) -> BioMolecule | list[BioMolecule] | Any | list[Any]:
     """Generates BioMolecules based either on inferring the type (DNA, RNA,
     or Protein), or explicitly interpreting based on `type`
 
@@ -505,7 +505,7 @@ def from_dataframe(
 
     Returns
     -------
-    DNA, RNA, Protein, or lists of one or a combination of any of them
+    DNA, RNA, Protein, Oligo, or lists of one or a combination of any of them
 
     Raises
     ------

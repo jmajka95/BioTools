@@ -61,7 +61,7 @@ def calc_mut_bounds(seq: str, ref: str) -> tuple[int, int, int]:
 
 def validate_sequence(seq: str, type: BioMolecule) -> bool:
     """Helper function that validates an input sequence based on valid characters."""
-    if type == BioMolecule.DNA:
+    if type == BioMolecule.DNA or type == BioMolecule.OLIGO:
         return all(char in NTs for char in seq)
     elif type == BioMolecule.RNA:
         return all(char in RNA_NTs for char in seq)

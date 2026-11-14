@@ -146,8 +146,8 @@ class BioReactionGraph:
         match step.type:
             case BioReaction.AMPLIFY:
                 return {
-                    "f_primer":         step.kwargs["f_primer"],
-                    "r_primer":         step.kwargs["r_primer"],
+                    "f_primer":         step.kwargs["f_primers"],
+                    "r_primer":         step.kwargs["r_primers"],
                     "template":         output,
                     "min_binding_len":  step.kwargs["min_binding_length"],
                     "gel_extraction":   step.kwargs["gel_extraction"]

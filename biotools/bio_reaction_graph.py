@@ -41,6 +41,7 @@ class BioReactionGraph:
         self.steps = set(step for edge in self.edges for step in edge)
         self.name = name
         self.graph, self.graph_dict, self.nx_graph, self.step_dict = self._generate_graph()
+        self._output = None
 
     def __repr__(self) -> str:
         return f"{{ {self.name} | BioReactionGraph | [{len(self.steps)} Node(s)] }}"
@@ -74,6 +75,9 @@ class BioReactionGraph:
         Products from the reaction simulation if the simulation was successful,
         raises a SimulationError otherwise.
         """
+        if self._output is not None:
+            return self._output
+
         keys: list[Any] = list(self.graph_dict.keys())
         values: list[Any] = list(self.graph_dict.values())
         all_values: list[Any] = [v for val in values for v in val]
@@ -119,7 +123,8 @@ class BioReactionGraph:
                     else:  # Create the input
                         step_dict[step] = self._format_input(step, output)  # Check reaction type to generate correct input
 
-        return output
+        self._output = output
+        return self._output
 
     def _format_input(
         self,

@@ -61,6 +61,7 @@ class BioReactionStep:
         self.name = name
         self.kwargs = kwargs
         self._has_pool = self._check_pools()
+        self._output = None
 
     def __eq__(self, oth: BioReactionStep) -> bool:
         return isinstance(oth, BioReactionStep) and self.name == oth.name and self.type == oth.type
@@ -87,6 +88,9 @@ class BioReactionStep:
         -------
         The product of the reaction, run as specified by self.kwargs or by the provided arguments
         """
+        if self._output is not None:
+            return self._output
+
         if self.type == BioReaction.INPUT:  # Input type returns its input
             return self.kwargs["input"]
 
@@ -202,7 +206,8 @@ class BioReactionStep:
 
             # Run and return combinations of args
             with multiprocessing.Pool(processes=os.cpu_count()-1) as pool:
-                return pool.starmap(func, arg_combos)
+                self._output = self._sanitize_output(pool.starmap(func, arg_combos))
+                return self._output
 
         match self.type:  # Check if lists are present when they shouldn't be
             case BioReaction.ANNEAL:
@@ -220,10 +225,10 @@ class BioReactionStep:
             case BioReaction.AMPLIFY:
                 if isinstance(kargs["template"], list):
                     seqs: list[DNA] = kargs["template"]
-                arg_combos = [
-                    (kargs["f_primers"], kargs["r_primers"], seq, kargs["min_binding_length"], kargs["gel_extraction"]) \
-                    for seq in seqs
-                ]
+                    arg_combos = [
+                        (kargs["f_primers"], kargs["r_primers"], seq, kargs["min_binding_length"], kargs["gel_extraction"]) \
+                        for seq in seqs
+                    ]
             case BioReaction.DIGEST:
                 # Check "input"
                 if isinstance(kargs["input"], list):
@@ -284,14 +289,16 @@ class BioReactionStep:
                     input_combos = product(*input_args)
                     arg_combos = [
                         (combo, kargs["gel_extraction"], kargs["blunt"], kargs["allow_linear"]) \
-                        for combo in input_combos 
+                        for combo in input_combos
                     ]
 
         if arg_combos:  # Multiprocessing workflow
             with multiprocessing.Pool(processes=os.cpu_count()-1) as pool:
-                return pool.starmap(func, arg_combos)
+                self._output = self._sanitize_output(pool.starmap(func, arg_combos))
+                return self._output
         # We have no input lists where they usually aren't and no pools
-        return func(**kargs)
+        self._output = func(**kargs)
+        return self._output
 
     def _print_kwargs(self) -> str:
         """Generates printable dictionary in a pretty format for __repr__"""
@@ -330,7 +337,9 @@ class BioReactionStep:
                     or any(p.has_pool() for p in curr_kwargs["r_primers"])
             case BioReaction.DIGEST | BioReaction.KLD:
                 if not curr_kwargs["input"]: return False
-                return curr_kwargs["input"].has_pool()
+                for input in curr_kwargs["input"]:
+                    if input.has_pool():
+                        return True
             case BioReaction.INPUT:
                 return curr_kwargs["input"].has_pool()
             case BioReaction.GIBSON | BioReaction.GG:
@@ -345,3 +354,15 @@ class BioReactionStep:
                     if input.has_pool():
                         return True
         return False
+
+    def _sanitize_output(self, output: Any) -> list[DNA]:
+        """Takes multiprocessing output and santizes them to remove nested lists."""
+        new_output: list[DNA] = []
+        if any(isinstance(item, list) for item in output):
+            for item in output:
+                if isinstance(item, list):
+                    new_output += item
+                else:
+                    new_output += [item]
+            return new_output
+        return output

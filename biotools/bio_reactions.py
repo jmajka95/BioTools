@@ -74,7 +74,10 @@ def amplify(
 
     # Check if input is Oligo and convert to DNA for function
     if isinstance(template, Oligo):
-        template = DNA(seq=template.seq)
+        template = DNA(
+            seq=template.seq,
+            name=template.name
+        )
 
     f_binding_spans: list[tuple[int, int]] = []
     for f in f_primers:

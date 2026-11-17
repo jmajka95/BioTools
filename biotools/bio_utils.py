@@ -227,7 +227,7 @@ def find_binding_site(
     match = re.finditer(primer.seq[-min_binding_length:], template.seq)
 
     if single:
-        while len(list(match)) != 1:
+        while len(list(match)) != 1:  # Continue to find sites until only one is present
             if (min_binding_length := min_binding_length + 1) > primer.length:
                 return None
             match = re.finditer(primer.seq[-min_binding_length:], template.seq)
@@ -235,7 +235,7 @@ def find_binding_site(
         match = re.finditer(primer.seq[-min_binding_length:], template.seq)
         return next(match).span()
     else:
-        while len(match) == 0:
+        while len(match) == 0:  # Find any number of sites
             if (min_binding_length := min_binding_length + 1) > primer.length:
                 return None
             match = re.finditer(primer.seq[-min_binding_length:], template.seq)

@@ -68,6 +68,7 @@ def amplify(
             )
             # Simply convert offsets generated to 0 to make full-length dsDNA resulting from the PCR
             output.offsets = ((0,0), (0,0))
+            output.strandedness = BioProperty.DOUBLE_STRANDED
             outputs.append(output)
         return outputs[0] if len(outputs) == 1 else outputs
 

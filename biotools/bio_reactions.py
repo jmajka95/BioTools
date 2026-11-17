@@ -98,7 +98,7 @@ def amplify(
     if not template.is_circular():
         if not all(f_span[1] - r_span[0] <= -min_binding_length for f_span in f_binding_spans for r_span in r_binding_spans):
             raise ReactionError(
-                "Forward primers must be upstream of reverse primers and must not overlap!"
+                "Forward primers must be upstream of reverse primers and must not overlap!\n"
                f"Error generated with {template.name}.")
     else:
         if not all(f_span[1] < r_span[0] for f_span in f_binding_spans for r_span in r_binding_spans):

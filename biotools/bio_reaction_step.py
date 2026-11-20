@@ -91,8 +91,8 @@ class BioReactionStep:
         if self._output is not None:
             return self._output
 
-        if self.type == BioReaction.INPUT:  # Input type returns its input
-            return self.kwargs["input"]
+        if self.type == BioReaction.INPUT:  # Input type returns its kwargs
+            return self.kwargs
 
         kargs: dict[str, Any] = {}
         if kwargs: kargs = kwargs

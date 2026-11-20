@@ -135,15 +135,20 @@ class BioReactionGraph:
         """Formats input for step for proper simulation.
         If no kwargs are provided, we assume that this is not receiving output from a previous step.
         """
-        if kwargs:  # We need to extend the input arg for the reaction
+        if kwargs:  # We need to extend the args for the reaction
             match step.type:
                 case BioReaction.AMPLIFY:
                     kwargs["template"].append(output)
                 case BioReaction.ANNEAL:
                     raise ValueError("Cannot provide more than one input for anneal reaction!")
-                case BioReaction.DIGEST | BioReaction.KLD | \
-                BioReaction.INPUT:
+                case BioReaction.DIGEST | BioReaction.KLD:
                     kwargs["input"].append(output)
+                case BioReaction.INPUT:
+                     # We assume only one key in kwargs
+                    key: str = list(output.keys())[0]
+                    if key not in kwargs.keys():
+                        raise ValueError(f"Key {key} not found in kwargs!")
+                    kwargs[key] = output[key]  # Make kwargs at key whatever was passed in
                 case BioReaction.GIBSON | BioReaction.GG | \
                 BioReaction.LIGATE:
                     kwargs["inputs"].append(output)
